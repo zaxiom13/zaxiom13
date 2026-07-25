@@ -367,8 +367,13 @@ export function createEditor(opts: QEditorOpts): EditorView {
       closeBrackets(),
       autocompletion({ override: [completions], activateOnTyping: true }),
       hoverTooltip(
-        (view, pos) => {
-          const hit = hoverDefinitionAt(view.state.doc.toString(), pos, currentInterp());
+        (view, pos, side) => {
+          const hit = hoverDefinitionAt(
+            view.state.doc.toString(),
+            pos,
+            currentInterp(),
+            side
+          );
           if (!hit) return null;
           return {
             pos: hit.from,
@@ -377,7 +382,7 @@ export function createEditor(opts: QEditorOpts): EditorView {
             create: () => ({ dom: definitionTooltip(hit.definition) }),
           };
         },
-        { hoverTime: 240, hideOnChange: true }
+        { hoverTime: 140, hideOnChange: true }
       ),
       qLanguage,
       syntaxHighlighting(qHighlight),
@@ -439,10 +444,16 @@ const OP_CHAR = /[+\-*%&|^=<>!,#_$?@~:'\/\\]/;
 export function hoverDefinitionAt(
   doc: string,
   position: number,
-  interp: Interp
+  interp: Interp,
+  side = 0
 ): HoverDefinitionHit | null {
   if (!doc.length) return null;
-  let p = Math.max(0, Math.min(position, doc.length - 1));
+  // CodeMirror gives us a cursor position between characters plus the side
+  // the pointer is actually on. Honour that side so a name immediately
+  // followed by an operator (for example `move:{...}`) remains hoverable
+  // across its full width instead of resolving its right half as `:`.
+  let p = position - (side < 0 ? 1 : 0);
+  p = Math.max(0, Math.min(p, doc.length - 1));
   if (!IDENT_CHAR.test(doc[p]) && !OP_CHAR.test(doc[p]) && p > 0) p--;
   const family = IDENT_CHAR.test(doc[p]) ? IDENT_CHAR : OP_CHAR.test(doc[p]) ? OP_CHAR : null;
   if (!family || !isCodePosition(doc, p)) return null;

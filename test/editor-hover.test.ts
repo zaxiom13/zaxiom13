@@ -33,6 +33,17 @@ describe('editor definition hover', () => {
     });
   });
 
+  it('honours the pointer side at a name/operator boundary', () => {
+    const doc = 'move:{x+1}';
+    const ip = createInterp();
+    const nameHit = hoverDefinitionAt(doc, 4, ip, -1);
+    const operatorHit = hoverDefinitionAt(doc, 4, ip, 1);
+
+    expect(nameHit?.definition.name).toBe('move');
+    expect(nameHit?.definition.source).toBe('move:{x+1}');
+    expect(operatorHit?.definition.name).toBe(':');
+  });
+
   it('infers implicit lambda arguments', () => {
     const doc = 'blend:{x+y*z}; blend[1;2;3]';
     const hit = hoverDefinitionAt(doc, doc.lastIndexOf('blend') + 2, createInterp());
