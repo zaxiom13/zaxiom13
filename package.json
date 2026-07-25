@@ -14,7 +14,8 @@
     "corpus": "node tools/scrape-corpus.mjs /tmp/kxdocs > parity/corpus.json && node tools/make-suite.mjs",
     "q": "tsx tools/q.mjs",
     "shots": "node tools/shot.mjs",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "e2e": "node tools/e2e.mjs"
   },
   "repository": {
     "type": "git",

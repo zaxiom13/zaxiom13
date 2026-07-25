@@ -85,7 +85,8 @@ export class Interp {
   out: (s: string) => void = () => {};
   seed = 0x2f6e2b1;
   steps = 0;
-  stepLimit = 40_000_000;
+  /** guard against runaway loops; reset for every top-level run and frame */
+  stepLimit = 8_000_000;
   trace: { depth: number; src: string; val: QValue }[] | null = null;
 
   constructor() {}
@@ -101,6 +102,7 @@ export class Interp {
 
   /** Run source, returning the value of the last statement. */
   run(src: string): QValue {
+    this.steps = 0;
     const stmts = parse(src);
     let v: QValue = UNIT;
     try {
@@ -114,6 +116,7 @@ export class Interp {
 
   /** Run source, returning every statement's value (for the console). */
   runAll(src: string): { node: Node; value: QValue }[] {
+    this.steps = 0;
     const stmts = parse(src);
     const out: { node: Node; value: QValue }[] = [];
     for (const s of stmts) {
@@ -1360,15 +1363,15 @@ export function subTable(t: QTable, rows: number[]): QTable {
 
 export function selectRows(col: QValue, rows: number[]): QValue {
   if (col.t === 10) {
-    const s = col.v as string;
+    const s = (col as QVector).v as string;
     return vec(10, rows.map((r) => s[r] ?? ' ').join(''));
   }
   if (col.t > 0 && col.t <= 19) {
-    const arr = col.v as any[];
+    const arr = (col as QVector).v as any[];
     return vec(col.t, rows.map((r) => arr[r]));
   }
   if (col.t === 0) {
-    const arr = col.v as QValue[];
+    const arr = (col as QVector).v as QValue[];
     return listFrom(rows.map((r) => arr[r]));
   }
   return col;
@@ -1378,7 +1381,7 @@ export function keyStr(x: QValue): string {
   if (isAtom(x)) return x.t + ':' + String((x as QAtom).v);
   if (x.t === 10) return '10:' + (x as QVector).v;
   if (x.t === 0) return '0:(' + ((x as QVector).v as QValue[]).map(keyStr).join(';') + ')';
-  if (x.t >= 0 && x.t <= 19) return x.t + ':' + (x.v as any[]).join(',');
+  if (x.t >= 0 && x.t <= 19) return x.t + ':' + ((x as QVector).v as any[]).join(',');
   if (isDict(x)) return 'd:' + keyStr((x as QDict).k) + '|' + keyStr((x as QDict).v);
   if (isTable(x)) {
     const t = x as QTable;

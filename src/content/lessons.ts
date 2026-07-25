@@ -78,8 +78,11 @@ export const LESSONS: Lesson[] = [
       c('sum til 10'),
       c('count where 0 = (til 20) mod 3'),
       n(
-        'The Trace button (next to Run) peels an expression apart and shows every intermediate value, right to left. It is the fastest way to build intuition.'
+        'The Trace button (next to Run) peels an expression apart and shows every intermediate value, right to left — along with its parse tree. It is the fastest way to build intuition.'
       ),
+      t('You can see the tree yourself. `parse` turns source into the nested lists q actually evaluates, and `eval` runs them:'),
+      c('parse "2*3+4"'),
+      c('eval parse "2*3+4"'),
     ],
     challenge: {
       prompt: 'Compute the average of the squares of 1..10 into `a`.',

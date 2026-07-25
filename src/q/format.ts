@@ -427,8 +427,9 @@ function tableLines(t: QTable, opts: FmtOpts): string[] {
 
 function selectFirst(col: QValue, n: number): QValue {
   if (count(col) <= n) return col;
-  if (col.t === 10) return { t: 10, v: (col.v as string).slice(0, n) } as QVector;
-  if (col.t >= 0 && col.t <= 19) return { t: col.t, v: (col.v as any[]).slice(0, n) } as QVector;
+  if (col.t === 10) return { t: 10, v: ((col as QVector).v as string).slice(0, n) } as QVector;
+  if (col.t >= 0 && col.t <= 19)
+    return { t: col.t, v: ((col as QVector).v as any[]).slice(0, n) } as QVector;
   return col;
 }
 

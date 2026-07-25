@@ -256,6 +256,7 @@ export class SketchRuntime {
     this.frameNo++;
     this.fps = this.fps * 0.9 + (p.frameRate() ?? 0) * 0.1;
     this.pushInputs(t);
+    this.ip.steps = 0; // the loop guard is per frame, not per session
     try {
       const g = this.ip.globals;
       p.background(this.bgColor);
