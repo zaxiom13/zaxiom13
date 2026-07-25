@@ -234,7 +234,8 @@ export function compact(x: QValue, opts: FmtOpts = DEFAULT_OPTS, bare = false): 
   if (isTable(x)) return '+' + compact(tableToDict(x as QTable), opts);
   if (isDict(x)) {
     const d = x as QDict;
-    return compact(d.k, opts) + '!' + compact(d.v, opts);
+    const k = compact(d.k, opts);
+    return (k.startsWith(',') ? '(' + k + ')' : k) + '!' + compact(d.v, opts);
   }
   const n = count(x);
   if (x.t === 10) return bare ? (x as QVector).v : '"' + escapeStr((x as QVector).v as string) + '"';
@@ -245,12 +246,13 @@ export function compact(x: QValue, opts: FmtOpts = DEFAULT_OPTS, bare = false): 
   }
   if (n === 0) return '`' + (TYPE_CHAR[x.t] === 'j' ? 'long' : typeNameOf(x.t)) + '$()';
   const arr = (x as QVector).v as any[];
-  if (x.t === 1) return arr.map((b) => (b ? '1' : '0')).join('') + (bare ? '' : 'b');
+  const one = n === 1 && !bare ? ',' : '';
+  if (x.t === 1) return one + arr.map((b) => (b ? '1' : '0')).join('') + (bare ? '' : 'b');
   if (x.t === 4)
-    return (bare ? '' : '0x') + arr.map((b) => Number(b).toString(16).padStart(2, '0')).join('');
+    return one + (bare ? '' : '0x') + arr.map((b) => Number(b).toString(16).padStart(2, '0')).join('');
   if (x.t === 11) {
     if (bare) return arr.join(' ');
-    return arr.map((s) => '`' + s).join('');
+    return one + arr.map((s) => '`' + s).join('');
   }
   if (x.t === 9 || x.t === 8) {
     const strs = arr.map((v) => {
@@ -393,7 +395,7 @@ export function s2Lines(x: QValue, opts: FmtOpts = DEFAULT_OPTS): string[] {
   const counts = new Set(els.map((e) => count(e)));
   const t0 = els[0].t;
   if (anySpecial || counts.size > 1 || (types.size === 1 && (t0 === 1 || t0 === 4 || t0 === 10)))
-    return els.map((e) => (e.t > 97 || e.t < -19 ? s2Lines(e, opts).join('\n') : compact(e, opts)));
+    return els.map((e) => compact(e, opts));
   return tabAlign(els.map((e) => s2Lines(e, opts)));
 }
 

@@ -19,7 +19,8 @@ frame:{[t]
 ## What's in here
 
 - **A q interpreter** (`src/q/`) — lexer, parser, evaluator, 167 builtins, qSQL
-  (`select`/`exec`/`update`/`delete` with `by` and `where`), dictionaries, keyed tables,
+  (`select`/`exec`/`update`/`delete` with `by` and `where`, plus the functional forms
+  `?[t;c;b;a]` and `![t;c;b;a]`), dictionaries, keyed tables,
   joins, iterators (`each`/`over`/`scan`/`each-prior`/`each-left`/`each-right`),
   projections, temporal types, and a console formatter that reproduces q's own output.
 - **A parity harness** (`tools/parity.mjs`, `parity/corpus.json`) — every runnable example
@@ -88,15 +89,16 @@ canvas talks to the *live* sketch, so you can pause it and poke at its state.
 The **Parity** tab answers that honestly, in your browser. Of the 2203 documentation
 examples that ship with the app (the `ref/` and `basics/` pages):
 
-- **73.9%** reproduce kdb+'s printed output character-for-character
-- 210 need data we don't ship and are reported separately, never counted as passes
+- **75.6%** reproduce kdb+'s printed output character-for-character
+- 224 need data we don't ship and are reported separately, never counted as passes
 - the rest are listed with a diff, so nothing is swept under the rug
 
 The full corpus (`npm run parity`, 3852 examples including the whitepapers) sits at
-**71.2%**. Known gaps, roughly in order of how often they bite:
+**72.2%**. Known gaps, roughly in order of how often they bite:
 
 - **enumerations** (`` `sym$x ``, type 20+) are not implemented
-- **`parse`** returns the source string instead of a parse tree
+- **`parse`** builds real parse trees for expressions and qSQL, but not for every
+  exotic form
 - **file, IPC and system verbs** (`0:`, `1:`, `hopen`, `\l`, …) are absent by design
 - **error output** is the error name only — no `[0] expr ^` backtrace
 - strings are UTF-16, not bytes, so `count "Zürich"` is 6 here and 7 in kdb+

@@ -281,6 +281,10 @@ $('#trace')!.addEventListener('click', () => {
 function showTrace(src: string) {
   selectTab('console');
   println(src, 'in');
+  try {
+    const tree = runConsole(ip, 'parse "' + src.replace(/\\/g, '\\\\').replace(/"/g, '\\"') + '"');
+    if (tree.ok && tree.output) println('parse tree:\n' + tree.output, 'note');
+  } catch {}
   println('— evaluation, right to left —', 'note');
   let steps;
   try {

@@ -62,6 +62,8 @@ import { Interp, Builtin, prim, fillVec, keyStr, setAt, subTable, selectRows, tr
 import { atomic1, atomic2, arithType, compareValues, compareAny, cmpKey, numOf, floatEq } from './atomic';
 import { display, compact, cell, fmtRaw, DEFAULT_OPTS, gfmt, fmtDate, fmtTime } from '../format';
 import { daysFromEpoch, ymdFromDays, typeFromChar } from '../lexer';
+import { parse as parseQ } from '../parser';
+import { astToTree } from '../parsetree';
 
 type Args = QValue[];
 
@@ -694,7 +696,7 @@ export function installBuiltins(ip: Interp) {
     return longvec(out);
   });
 
-  def('!', [1, 2], (ip2, a) => {
+  function bangOp(ip2: Interp, a: Args): QValue {
     if (a.length === 1) return keyOf(ip2, a[0]);
     const [x, y] = a;
     if (isAtom(x) && Math.abs(x.t) === 7 && isNullAt(x.t, A(x))) {
@@ -730,7 +732,7 @@ export function installBuiltins(ip: Interp) {
       return dict(table(full.c.slice(0, n), full.v.slice(0, n)), table(full.c.slice(n), full.v.slice(n)));
     }
     return dict(x, y);
-  });
+  }
 
   function keyOf(ip2: Interp, x: QValue): QValue {
     if (isKeyedTable(x)) return (x as QDict).k;
@@ -749,9 +751,12 @@ export function installBuiltins(ip: Interp) {
   def('get', [1], (ip2, [x]) => valueOf(ip2, x));
 
   function valueOf(ip2: Interp, x: QValue): QValue {
-    if (x.t === 0 && count(x) > 1 && isFunc(at(x, 0))) {
-      const its = items(x);
-      return ip2.apply(its[0], its.slice(1));
+    if (x.t === 0 && count(x) > 1) {
+      const head = at(x, 0);
+      const fn = head.t === -11 && ip2.globals.has((head as QAtom).v as string)
+        ? ip2.globals.get((head as QAtom).v as string)!
+        : head;
+      if (isFunc(fn)) return evalTree(ip2, x, null);
     }
     if (isDict(x)) return (x as QDict).v;
     if (isTable(x)) return flip(x);
@@ -891,9 +896,9 @@ export function installBuiltins(ip: Interp) {
     return selectRows(x, idx);
   });
 
-  def('?', [2, 3, 4], (ip2, a) => {
+  def('?', [2, 3, 4, 5, 6], (ip2, a) => {
     if (a.length === 2) return findOrRoll(ip2, a[0], a[1]);
-    if (a.length === 3 && !isTable(a[0])) return vectorCond(ip2, a[0], a[1], a[2]);
+    if (a.length === 3 && !isTable(a[0]) && a[0].t !== -11) return vectorCond(ip2, a[0], a[1], a[2]);
     return funcSelect(ip2, a);
   });
 
@@ -983,9 +988,237 @@ export function installBuiltins(ip: Interp) {
     return at(r, 0);
   });
 
-  function funcSelect(ip2: Interp, a: Args): QValue {
-    throw new QError('nyi', 'Functional select is not supported yet.');
+  /**
+   * Evaluate a q parse tree against a set of columns.
+   * A symbol names a column (or a global); an enlisted value is a literal;
+   * a list headed by a function is an application.
+   */
+  function evalTree(ip2: Interp, tree: QValue, cols: Map<string, QValue> | null): QValue {
+    if (tree.t === -11) {
+      const nm = (tree as QAtom).v as string;
+      if (cols && cols.has(nm)) return cols.get(nm)!;
+      if (ip2.globals.has(nm)) return ip2.globals.get(nm)!;
+      throw new QError(nm, `Undefined name: ${nm}`);
+    }
+    if (tree.t === 0) {
+      const its = items(tree);
+      if (its.length === 1) return its[0]; // enlist x -> the literal x
+      let head = its.length ? its[0] : UNIT;
+      if (head.t === -11 && ip2.globals.has((head as QAtom).v as string))
+        head = ip2.globals.get((head as QAtom).v as string)!;
+      if (its.length && isFunc(head)) {
+        const f = head;
+        const args = its.slice(1).map((e) => evalTree(ip2, e, cols));
+        return ip2.apply(f, args.length ? args : [UNIT]);
+      }
+      return tree;
+    }
+    return tree;
   }
+
+  function asTable(ip2: Interp, t: QValue): { tbl: QTable; name: string | null; keys: string[] } {
+    let name: string | null = null;
+    let v = t;
+    if (v.t === -11) {
+      name = (v as QAtom).v as string;
+      v = ip2.resolve(name, { locals: null });
+    }
+    if (isKeyedTable(v)) {
+      const kt = v as QDict;
+      const k = kt.k as QTable,
+        val = kt.v as QTable;
+      return { tbl: table([...k.c, ...val.c], [...k.v, ...val.v]), name, keys: k.c.slice() };
+    }
+    if (!isTable(v)) throw new QError('type', 'functional query needs a table');
+    return { tbl: v as QTable, name, keys: [] };
+  }
+
+  const scopeOf = (t: QTable, rows: number[]): Map<string, QValue> => {
+    const m = new Map<string, QValue>();
+    t.c.forEach((c, i) => m.set(c, selectRows(t.v[i], rows)));
+    m.set('i', longvec(rows.map((_, ix) => ix)));
+    return m;
+  };
+
+  /** ?[t;c;b;a] and ?[t;i;p] */
+  function funcSelect(ip2: Interp, a: Args): QValue {
+    const { tbl, keys } = asTable(ip2, a[0]);
+    const nrows = count(tbl);
+    // ?[t;i;p] - apply a parse tree to selected rows
+    if (a.length === 3 && (a[1].t === 7 || a[1].t === 6 || isAtom(a[1]))) {
+      const idx = isAtom(a[1]) ? [Math.trunc(N(a[1]))] : (rawArray(a[1]) as number[]);
+      return evalTree(ip2, a[2], scopeOf(tbl, idx));
+    }
+    let rows: number[] = [];
+    for (let i = 0; i < nrows; i++) rows.push(i);
+    const cons = a[1];
+    if (cons && !isAtom(cons) && count(cons) > 0) {
+      for (const c of items(cons)) {
+        const res = evalTree(ip2, c, scopeOf(tbl, rows));
+        const keep: number[] = [];
+        if (isAtom(res)) {
+          if (truthy(res)) keep.push(...rows);
+        } else {
+          for (let i = 0; i < rows.length; i++) if (truthy(at(res, i))) keep.push(rows[i]);
+        }
+        rows = keep;
+      }
+    }
+    const b = a[2];
+    const sel = a[3];
+
+    const selSpecs = (): { names: string[]; trees: QValue[] } | null => {
+      if (sel === undefined) return null;
+      if (isDict(sel)) {
+        const d = sel as QDict;
+        return { names: symsOf(d.k), trees: items(d.v) };
+      }
+      if (sel.t === -11) return { names: [(sel as QAtom).v as string], trees: [sel] };
+      if (sel.t === 0 && count(sel) === 0) return null; // () -> all columns
+      return { names: ['x'], trees: [sel] };
+    };
+
+    const byGroups = (): { names: string[]; trees: QValue[] } | null => {
+      if (b === undefined) return null;
+      if (isDict(b)) return { names: symsOf((b as QDict).k), trees: items((b as QDict).v) };
+      if (b.t === -11) return { names: [(b as QAtom).v as string], trees: [b] };
+      if (b.t === 11) return { names: symsOf(b), trees: items(b) };
+      return null;
+    };
+
+    const by = byGroups();
+    const spec = selSpecs();
+    const wantTable = sel === undefined || isDict(sel) || (sel.t === 0 && count(sel) === 0);
+
+    if (by) {
+      const scope = scopeOf(tbl, rows);
+      const keyVals = by.trees.map((t2) => {
+        const v = evalTree(ip2, t2, scope);
+        return isAtom(v) ? fillVec(v, rows.length) : v;
+      });
+      const map = new Map<string, number[]>();
+      const order: string[] = [];
+      for (let i = 0; i < rows.length; i++) {
+        const k = keyVals.map((v) => keyStr(at(v, i))).join('\u0001');
+        if (!map.has(k)) {
+          map.set(k, []);
+          order.push(k);
+        }
+        map.get(k)!.push(rows[i]);
+      }
+      const firstIdx = order.map((k) => rows.indexOf(map.get(k)![0]));
+      const sortIdx = order.map((_, i) => i);
+      sortIdx.sort((x, y) => {
+        for (let ci = 0; ci < keyVals.length; ci++) {
+          const c = compareAny(at(keyVals[ci], firstIdx[x]), at(keyVals[ci], firstIdx[y]));
+          if (c) return c;
+        }
+        return 0;
+      });
+      const keyTable = table(
+        by.names,
+        keyVals.map((v) => fromItems(sortIdx.map((i) => at(v, firstIdx[i]))))
+      );
+      const specs = spec ?? {
+        names: tbl.c.filter((c) => !by.names.includes(c)),
+        trees: tbl.c.filter((c) => !by.names.includes(c)).map((c) => sym(c)),
+      };
+      const valCols = specs.trees.map((t2, ci) =>
+        fromItems(
+          sortIdx.map((i) => evalTree(ip2, t2, scopeOf(tbl, map.get(order[i])!)))
+        )
+      );
+      const valTable = table(specs.names, valCols);
+      if (!wantTable && specs.names.length === 1)
+        return dict(keyTable.v.length === 1 ? keyTable.v[0] : keyTable, valCols[0]);
+      return dict(keyTable, valTable);
+    }
+
+    const scope = scopeOf(tbl, rows);
+    if (!spec) return selectTableRows(tbl, rows);
+    if (!wantTable) {
+      const vals = spec.trees.map((t2) => evalTree(ip2, t2, scope));
+      return vals.length === 1 ? vals[0] : fromItems(vals);
+    }
+    let vals = spec.trees.map((t2) => evalTree(ip2, t2, scope));
+    let m = 1;
+    for (const v of vals) if (!isAtom(v)) m = Math.max(m, count(v));
+    vals = vals.map((v) => (isAtom(v) ? fillVec(v, m) : v));
+    let res: QValue = table(spec.names, vals);
+    if (a.length > 4 && a[4] !== undefined && !isAtom(a[4])) return res;
+    if (a.length > 4 && a[4] !== undefined && isAtom(a[4]) && Number.isFinite(N(a[4])))
+      res = take(ip2, a[4], res);
+    return res;
+  }
+
+  /** ![t;c;b;a] - functional update and delete */
+  def('!', [1, 2, 4, 5], (ip2, a) => {
+    if (a.length <= 2) return bangOp(ip2, a);
+    const { tbl, name, keys } = asTable(ip2, a[0]);
+    const nrows = count(tbl);
+    let rows: number[] = [];
+    for (let i = 0; i < nrows; i++) rows.push(i);
+    const cons = a[1];
+    if (cons && !isAtom(cons) && count(cons) > 0) {
+      for (const c of items(cons)) {
+        const res = evalTree(ip2, c, scopeOf(tbl, rows));
+        const keep: number[] = [];
+        if (isAtom(res)) {
+          if (truthy(res)) keep.push(...rows);
+        } else for (let i = 0; i < rows.length; i++) if (truthy(at(res, i))) keep.push(rows[i]);
+        rows = keep;
+      }
+    }
+    const sel = a[3];
+    let result: QValue;
+    if (isDict(sel)) {
+      // update
+      const names = symsOf((sel as QDict).k);
+      const trees = items((sel as QDict).v);
+      const cols = tbl.c.slice();
+      const vals = tbl.v.map((c) => shallowClone(c));
+      names.forEach((nm, i) => {
+        const v = evalTree(ip2, trees[i], scopeOf(table(cols, vals), rows));
+        const ci = cols.indexOf(nm);
+        if (rows.length === nrows) {
+          const full = isAtom(v) ? fillVec(v, nrows) : v;
+          if (ci >= 0) vals[ci] = full;
+          else {
+            cols.push(nm);
+            vals.push(full);
+          }
+        } else {
+          let col = ci >= 0 ? shallowClone(vals[ci]) : fillVec(nullLike(isAtom(v) ? v : at(v, 0)), nrows);
+          rows.forEach((r, ix) => {
+            col = setAt(col, r, isAtom(v) ? v : at(v, ix));
+          });
+          if (ci >= 0) vals[ci] = col;
+          else {
+            cols.push(nm);
+            vals.push(col);
+          }
+        }
+      });
+      result = table(cols, vals);
+    } else if (sel !== undefined && (sel.t === 11 || sel.t === -11) && count(sel) > 0) {
+      // delete columns
+      const drop = symsOf(sel);
+      const keep = tbl.c.map((c, i) => i).filter((i) => !drop.includes(tbl.c[i]));
+      result = table(keep.map((i) => tbl.c[i]), keep.map((i) => tbl.v[i]));
+    } else {
+      // delete rows
+      const del = new Set(rows);
+      const keep: number[] = [];
+      for (let i = 0; i < nrows; i++) if (!del.has(i)) keep.push(i);
+      result = selectTableRows(tbl, keep);
+    }
+    if (keys.length) result = xkey(ip2, symvec(keys), result);
+    if (name) {
+      ip2.globals.set(name, result);
+      return sym(name);
+    }
+    return result;
+  });
 
   def('@', [1, 2, 3, 4], (ip2, a) => {
     if (a.length === 1) return long(a[0].t);
@@ -2648,9 +2881,16 @@ export function installBuiltins(ip: Interp) {
   });
   def('eval', [1], (ip2, [x]) => {
     if (x.t === 10) return ip2.run((x as QVector).v as string);
+    if (x.t === 0 || x.t === -11) return evalTree(ip2, x, null);
     return x;
   });
-  def('parse', [1], (ip2, [x]) => str((x as QVector).v as string));
+  def('parse', [1], (ip2, [x]) => {
+    const src = x.t === 10 ? ((x as QVector).v as string) : String(A(x));
+    const stmts = parseQ(src);
+    if (!stmts.length) return UNIT;
+    if (stmts.length === 1) return astToTree(ip2, stmts[0]);
+    return listFrom(stmts.map((st) => astToTree(ip2, st)));
+  });
   def('set', [2], (ip2, [x, y]) => {
     ip2.globals.set(String(A(x)), y);
     return x;
