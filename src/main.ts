@@ -1,5 +1,8 @@
 import './styles.css';
-import { EditorView } from '@codemirror/view';
+
+const boot: { step(p: number, label?: string): void; fail(m: unknown): void; done(): void } =
+  (window as any).__boot ?? { step() {}, fail() {}, done() {} };
+boot.step(28, 'starting the interpreter…');
 import LZString from 'lz-string';
 
 import { createInterp, runConsole, shouldPrint } from './q/index';
@@ -8,12 +11,9 @@ import { display } from './q/format';
 import { traceExpr } from './q/trace';
 import { QError, isTable, isDict, isFunc, count, TYPE_NAME, QValue } from './q/value';
 import { SketchRuntime } from './sketch/runtime';
-import { createEditor, setEditorText, insertAtCursor } from './ui/editor';
+import { createTextareaSource, type CodeSource } from './ui/code-source';
 import { el, $, clear, toast, md } from './ui/dom';
 import { EXAMPLES } from './content/examples';
-import { renderLessons } from './ui/lessons-view';
-import { renderReference } from './ui/reference-view';
-import { renderParity } from './ui/parity-view';
 import { renderInspector } from './ui/inspector';
 
 const STORAGE_KEY = 'qsketch.code';
@@ -62,6 +62,15 @@ app.innerHTML = `
           <button id="playpause" title="Pause / resume">⏸</button>
           <button id="snap" title="Save a PNG">PNG</button>
           <button id="rec" title="Record a webm clip">REC</button>
+        </div>
+        <div class="dpad" id="dpad" hidden>
+          <div class="dpad-grid">
+            <button data-key="up">▲</button>
+            <button data-key="left">◀</button>
+            <button data-key="down">▼</button>
+            <button data-key="right">▶</button>
+          </div>
+          <button class="dpad-action" data-key="space">●</button>
         </div>
         <div class="canvas-badges">
           <span class="badge mode" id="badge-mode">idle</span>
@@ -144,24 +153,49 @@ const initialCode = fromHash() ?? localStorage.getItem(STORAGE_KEY) ?? defaultCo
 
 freshInterp();
 
-const editor: EditorView = createEditor({
+boot.step(55, 'building the editor…');
+
+const editorOpts = {
   parent: $('#editor')!,
   doc: initialCode,
-  interp: ip,
-  onRun: () => run(),
-  onChange: (doc) => {
-    localStorage.setItem(STORAGE_KEY, doc);
-  },
-});
+  onRun: () => void run(),
+  onChange: (doc: string) => localStorage.setItem(STORAGE_KEY, doc),
+};
+
+// start with a plain textarea so the page is usable at once, then upgrade
+let editor: CodeSource = createTextareaSource(editorOpts);
+
+async function upgradeEditor() {
+  try {
+    const m = await import('./ui/editor');
+    const current = editor.get();
+    $('#editor')!.innerHTML = '';
+    editor = m.createCodeMirrorSource({ ...editorOpts, doc: current, interp: ip });
+    (window as any).qeditor = editor;
+    $('#editor')!.classList.add('ready');
+  } catch (e) {
+    // the textarea keeps working; nothing to do
+  }
+}
+
+(window as any).qeditor = editor;
+boot.step(72, 'wiring the canvas…');
+// a tiny hook so tests (and the curious) can evaluate q from the console
+(window as any).qeval = (src: string) => {
+  const r = runConsole(ip, src);
+  return r.ok ? r.output : "'" + r.error!.msg;
+};
 
 // ---------------------------------------------------------------- running
 
 async function run() {
-  const code = editor.state.doc.toString();
+  boot.step(88, 'running your sketch…');
+  const code = editor.get();
   await runtime.ready();
   clearConsole();
   runtime.clear();
   freshInterp();
+  updateDpad(code);
   runtime.mount();
   const t0 = performance.now();
   let ok = true;
@@ -257,7 +291,7 @@ $('#rec')!.addEventListener('click', () => {
 });
 
 $('#share')!.addEventListener('click', async () => {
-  const code = editor.state.doc.toString();
+  const code = editor.get();
   const hash = '#c=' + LZString.compressToEncodedURIComponent(code);
   const url = location.origin + location.pathname + hash;
   history.replaceState(null, '', hash);
@@ -270,10 +304,7 @@ $('#share')!.addEventListener('click', async () => {
 });
 
 $('#trace')!.addEventListener('click', () => {
-  const sel = editor.state.selection.main;
-  const src = sel.empty
-    ? editor.state.doc.lineAt(sel.head).text
-    : editor.state.sliceDoc(sel.from, sel.to);
+  const src = editor.selectionOrLine();
   if (!src.trim()) return;
   showTrace(src.trim());
 });
@@ -303,6 +334,29 @@ function showTrace(src: string) {
     const arrow = s.depth < 0 ? '=' : '→';
     println(`${pad}${s.src}  ${arrow}  ${val.length > 90 ? val.slice(0, 90) + '..' : val}`, 'note');
   }
+}
+
+// ------------------------------------------------------------- on-screen keys
+
+// phones have no arrow keys, so show a pad when the sketch asks about keys
+const dpad = $('#dpad')!;
+for (const b of Array.from(dpad.querySelectorAll('button')) as HTMLElement[]) {
+  const key = b.dataset.key!;
+  const set = (down: boolean) => (e: Event) => {
+    e.preventDefault();
+    runtime.setKey(key, down);
+    b.classList.toggle('held', down);
+  };
+  b.addEventListener('pointerdown', set(true));
+  b.addEventListener('pointerup', set(false));
+  b.addEventListener('pointerleave', set(false));
+  b.addEventListener('pointercancel', set(false));
+}
+
+function updateDpad(code: string) {
+  const wantsKeys = /pressed\b|\.p5\.keys|\.p5\.key\b/.test(code);
+  dpad.hidden = !wantsKeys;
+  $('#canvas-wrap')!.classList.toggle('with-dpad', wantsKeys);
 }
 
 // ---------------------------------------------------------------- repl
@@ -355,7 +409,7 @@ function selectTab(name: string) {
   for (const b of Array.from($('#mobilenav')!.children) as HTMLElement[])
     b.classList.toggle('active', b.dataset.tab === name);
   if (name === 'data') refreshData();
-  if (name === 'parity') mountParity();
+  if (name === 'learn' || name === 'ref' || name === 'parity') void mountPanel(name);
 }
 
 function setGroup(tabsSel: string, panelsSel: string, name: string) {
@@ -424,7 +478,7 @@ for (const k of KEYS) {
     el(
       'button',
       {
-        onclick: () => insertAtCursor(editor, k),
+        onclick: () => editor.insert(k),
         title: k,
       },
       k.trim()
@@ -440,7 +494,7 @@ for (const ex of EXAMPLES) sel.append(el('option', { value: ex.id }, ex.title));
 sel.addEventListener('change', () => {
   const ex = EXAMPLES.find((e) => e.id === sel.value);
   if (!ex) return;
-  setEditorText(editor, ex.code);
+  editor.set(ex.code);
   sel.value = '';
   selectTab('code');
   run();
@@ -462,32 +516,48 @@ function refreshData() {
 
 // ---------------------------------------------------------------- panels
 
-renderLessons($('#learn')!, {
-  onSendToEditor: (code) => {
-    setEditorText(editor, code);
-    selectTab('code');
-    run();
-  },
-});
-
-renderReference($('#ref')!, () => ip, {
-  onInsert: (name) => {
-    insertAtCursor(editor, name);
-    selectTab('code');
-  },
-  onRun: (src) => {
-    selectTab('console');
-    println(src, 'in');
-    const r = runConsole(ip, src);
-    println(r.ok ? r.output : "'" + r.error!.msg, r.ok ? 'out' : 'err');
-  },
-});
-
-let parityMounted = false;
-function mountParity() {
-  if (parityMounted) return;
-  parityMounted = true;
-  renderParity($('#parity')!);
+// the Learn, Reference and Parity panels are fetched the first time they are
+// opened, so the first paint only pays for the editor and the interpreter
+const mounted = new Set<string>();
+async function mountPanel(name: string) {
+  if (mounted.has(name)) return;
+  mounted.add(name);
+  const host = $('#' + (name === 'ref' ? 'ref' : name === 'parity' ? 'parity' : 'learn'))!;
+  host.innerHTML = '<p class="note">loading…</p>';
+  try {
+    if (name === 'learn') {
+      const m = await import('./ui/lessons-view');
+      m.renderLessons(host, {
+        onSendToEditor: (code) => {
+          editor.set(code);
+          selectTab('code');
+          void run();
+        },
+      });
+    } else if (name === 'ref') {
+      const m = await import('./ui/reference-view');
+      m.renderReference(host, () => ip, {
+        onInsert: (nm) => {
+          editor.insert(nm);
+          selectTab('code');
+        },
+        onRun: (src) => {
+          selectTab('console');
+          println(src, 'in');
+          const r = runConsole(ip, src);
+          println(r.ok ? r.output : "'" + r.error!.msg, r.ok ? 'out' : 'err');
+        },
+      });
+    } else if (name === 'parity') {
+      const m = await import('./ui/parity-view');
+      m.renderParity(host);
+    }
+  } catch (e: any) {
+    host.innerHTML = '';
+    host.append(
+      el('p', { class: 'note' }, `could not load this panel: ${e?.message ?? e}`)
+    );
+  }
 }
 
 // ---------------------------------------------------------------- go
@@ -498,6 +568,11 @@ new ResizeObserver(() => runtime.resize()).observe($('#canvas-wrap')!);
 // keep the canvas from scrolling the page on touch
 $('#canvas')!.addEventListener('touchmove', (e) => e.preventDefault(), { passive: false });
 
-void run().then(() => {
-  println('Ctrl+Enter runs · the q) line below talks to the live sketch', 'note');
-});
+void run()
+  .then(() => {
+    println('Ctrl+Enter runs · the q) line below talks to the live sketch', 'note');
+    boot.done();
+    // now that something is on screen, fetch the real editor
+    setTimeout(() => void upgradeEditor(), 60);
+  })
+  .catch((e) => boot.fail(e?.stack ?? e));

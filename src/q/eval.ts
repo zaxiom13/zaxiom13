@@ -83,6 +83,10 @@ export class Interp {
   globals = new Map<string, QValue>();
   builtins = new Map<string, Builtin>();
   out: (s: string) => void = () => {};
+  /** display options, changed by \P and \c */
+  fmt = { precision: 7, maxRows: 25, maxWidth: 200 };
+  /** \t timer interval in milliseconds (0 = off) */
+  timerMs = 0;
   seed = 0x2f6e2b1;
   steps = 0;
   /** guard against runaway loops; reset for every top-level run and frame */
@@ -318,7 +322,12 @@ export class Interp {
 
   evalCall(n: Node & { k: 'call' }, f: Frame): QValue {
     const fn = this.evalNode(n.f, f);
-    const args = n.args.map((a) => (a === null ? null : this.evalNode(a, f)));
+    // q evaluates arguments right to left
+    const args: (QValue | null)[] = new Array(n.args.length);
+    for (let i = n.args.length - 1; i >= 0; i--) {
+      const a = n.args[i];
+      args[i] = a === null ? null : this.evalNode(a, f);
+    }
     if (args.length === 0) {
       if (isFunc(fn)) return this.apply(fn, []);
       return fn;

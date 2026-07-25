@@ -2,6 +2,8 @@
 
 import { Interp } from './eval';
 import { installBuiltins } from './builtins/index';
+import { installNamespaces } from './builtins/namespaces';
+import { installComplex } from './builtins/complex';
 import { display, displayLines, compact, DEFAULT_OPTS, FmtOpts } from './format';
 import { QValue, QError, UNIT } from './value';
 
@@ -14,6 +16,8 @@ export { lex } from './lexer';
 export function createInterp(opts?: { out?: (s: string) => void }): Interp {
   const ip = new Interp();
   installBuiltins(ip);
+  installNamespaces(ip);
+  installComplex(ip);
   if (opts?.out) ip.out = opts.out;
   return ip;
 }
@@ -27,7 +31,8 @@ export interface RunResult {
 }
 
 /** Run a script the way the q console does: print the value of each statement. */
-export function runConsole(ip: Interp, src: string, fmt: FmtOpts = DEFAULT_OPTS): RunResult {
+export function runConsole(ip: Interp, src: string, fmt?: FmtOpts): RunResult {
+  fmt = fmt ?? (ip.fmt as FmtOpts);
   const buf: string[] = [];
   const prevOut = ip.out;
   ip.out = (s) => buf.push(s);

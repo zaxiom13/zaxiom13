@@ -33,6 +33,138 @@ scene:([]
 draw scene`,
   },
   {
+    id: 'shapes',
+    title: 'Shape helpers',
+    blurb: 'circles, rects, texts, plot — table builders so you can skip the boilerplate.',
+    tags: ['start'],
+    code: `/ Every helper returns a table. Join them with , and they are one scene.
+bg \`#0b0e13
+u:.p5.w%6
+
+a:circles[u*1 2 3;.p5.cy-40;28;\`#ff6b6b\`#ffd93d\`#6bcb77]
+b:rects[u*4;.p5.cy-40;70;50;\`#4d96ff]
+c:tris[u*5;.p5.cy-40;34;\`#b892ff]
+d:rings[u*1 2 3 4 5;.p5.cy+60;22;\`#2a3b4d]
+e:texts[.p5.cx;.p5.cy+140;"circles rects tris rings texts";13]
+
+/ combinators tweak a whole scene at once
+a,b,c,d,e`,
+  },
+  {
+    id: 'plotting',
+    title: 'Plot anything',
+    blurb: 'plot and scatter scale your data to the canvas for you.',
+    tags: ['start', 'data'],
+    code: `/ plot y  ·  plot[x;y]  ·  scatter[x;y]  - auto-scaled to the canvas.
+bg \`#07090d
+
+walk:sums (300?1.0)-0.5
+lines2:plot (walk; 20 mavg walk)     / one scale, two colours
+dots:scatter[til 300;walk;2;\`#1f6feb]
+
+dots,lines2,texts[130;24;"random walk (blue) + 20-point moving average (pink)";12]`,
+  },
+  {
+    id: 'steer',
+    title: 'Keyboard: steer a ship',
+    blurb: 'pressed`left / .p5.keys — arrow keys or WASD, with a trail.',
+    tags: ['input', 'state'],
+    code: `/ Click the canvas once, then use the arrow keys (or WASD).
+bg \`#07090d
+init:\`x\`y\`vx\`vy\`trail!(.p5.cx;.p5.cy;0f;0f;())
+
+step:{[s;t]
+  ax:0.5*(pressed[\`right]|pressed[\`d])-pressed[\`left]|pressed \`a;
+  ay:0.5*(pressed[\`down]|pressed[\`s])-pressed[\`up]|pressed \`w;
+  boost:1+pressed \`space;
+  s[\`vx]:0.95*s[\`vx]+ax*boost;
+  s[\`vy]:0.95*s[\`vy]+ay*boost;
+  s[\`x]:(s[\`x]+s\`vx) mod .p5.w;
+  s[\`y]:(s[\`y]+s\`vy) mod .p5.h;
+  s[\`trail]:(-120) sublist s[\`trail],enlist(s\`x;s\`y);
+  s }
+
+view:{[s]
+  n:count s\`trail;
+  tr:$[n; circles[s[\`trail][;0];s[\`trail][;1];1+3*(til n)%n;\`#1f6feb]; ()];
+  ship:circles[s\`x;s\`y;13;\`gold];
+  hud:texts[90;24;"keys: ",", " sv string .p5.keys;12];
+  $[n; tr,ship,hud; ship,hud] }`,
+  },
+  {
+    id: 'paint',
+    title: 'Mouse: finger painting',
+    blurb: 'Drag on the canvas. Every dot is a row appended to a table.',
+    tags: ['input', 'state'],
+    code: `/ Hold the mouse (or a finger) down and drag.
+bg \`#0b0e13
+init:([] x:\`float$(); y:\`float$(); r:\`float$(); c:\`symbol$())
+
+step:{[s;t]
+  if[not .p5.down; :s];
+  s:s upsert (.p5.mx; .p5.my; 6+10*abs sin 2*t; hsv[0.1*t;0.65;1]);
+  (-600) sublist s }
+
+view:{[s] $[count s; fade[circles[s\`x;s\`y;s\`r;s\`c];0.75]; texts[.p5.cx;.p5.cy;"drag to paint";18]] }`,
+  },
+  {
+    id: 'tick',
+    title: 'Timer: a live tickerplant',
+    blurb: '\\t and .z.ts — the kdb+ way to do periodic work.',
+    tags: ['finance', 'timer'],
+    code: `/ \\t sets a timer interval; .z.ts runs on every tick. This is how real
+/ kdb+ processes schedule work - and it makes a fine animation clock.
+bg \`#0a0d13
+trade:0#([] time:\`time$(); px:\`float$())
+px:100f
+
+\\t 100
+
+.z.ts:{[now]
+  px::px+0.5*(rand 1.0)-0.5;
+  \`trade insert (\`time$now; px);
+  if[400<count trade; trade::-400#trade];
+  n:count trade;
+  chart:$[n>20; plot (trade\`px; 20 mavg trade\`px); plot trade\`px];
+  hud:texts[110;24;"tick ",string[n]," px ",string 0.01*floor 100*px;13];
+  draw chart,hud }`,
+  },
+  {
+    id: 'julia',
+    title: 'Julia set',
+    blurb: 'The .c namespace: a whole complex plane, iterated every frame.',
+    tags: ['complex', 'animation'],
+    code: `/ z := z*z + c, for every pixel, sixty times a second.
+bg \`black
+W:130; H:95
+zs:.c.grid[W;H;.c.z[-1.7;-1.2];.c.z[1.7;1.2]]   / the complex plane
+xy:grid[W;H]                                    / where to draw each one
+cw:.p5.w%W; ch:.p5.h%H
+
+frame:{[t]
+  c:.c.polar[0.7885;0.25*t];                    / c walks round a circle
+  n:.c.escape[zs;c;48];                         / iterations survived
+  s:update n:n, v:(n%48) xexp 0.45 from xy;     / gamma for contrast
+  select shape:\`rect, x:cw*(0.5+x), y:ch*(0.5+y), w:cw+1, h:ch+1,
+         fill:?[n=48;\`#05060a;hsv[0.55+0.45*v;0.85;0.15+0.85*v]] from s }`,
+  },
+  {
+    id: 'conformal',
+    title: 'Conformal map',
+    blurb: 'Push a grid of complex numbers through z², 1/z and friends.',
+    tags: ['complex', 'animation'],
+    code: `/ A conformal map moves the plane around while keeping angles.
+bg \`#06080c
+zs:.c.grid[70;70;.c.z[-1.6;-1.6];.c.z[1.6;1.6]]
+hue:0.5+0.09*.c.arg zs                          / colour by where it started
+
+frame:{[t]
+  w:.c.add[.c.mul[zs;zs];.c.polar[0.9;0.4*t]];  / z^2 + a rotating constant
+  w:.c.add[w;.c.mul[.c.inv .c.add[zs;.c.z[1.2;0]];0.35]];
+  s:0.2*.p5.h;
+  points[.p5.cx+s*.c.re w; .p5.cy+s*.c.im w; hsv[hue;0.7;1]] }`,
+  },
+  {
     id: 'grid',
     title: 'Grid of dots',
     blurb: 'til, cross and update: build a lattice, colour it by position.',
@@ -248,9 +380,12 @@ n:500
 init:([] x:n?800f; y:n?600f)
 
 step:{[s;t]
-  a:(2*pi)*noise[0.004*s\`x;0.004*s\`y;0.15*t];
+  a:(2*pi)*noise[0.005*s\`x;0.005*s\`y;0.12*t];
   s:update x:x+2.2*cos a, y:y+2.2*sin a from s;
-  update x:x mod .p5.w, y:y mod .p5.h from s }
+  s:update x:x mod .p5.w, y:y mod .p5.h from s;
+  n:count s;
+  keep:0.985>n?1.0;                            / respawn a few each frame
+  update x:?[keep;x;n?.p5.w], y:?[keep;y;n?.p5.h] from s }
 
 view:{[s] update shape:\`circle, r:1.6,
           fill:hsv[0.55+0.15*x%.p5.w;0.5;1], a:0.8 from s }`,

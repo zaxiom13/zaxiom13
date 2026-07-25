@@ -14,6 +14,11 @@ export class AudioEngine {
     return this.ctx;
   }
 
+  /** browsers only allow audio after a user gesture */
+  resume() {
+    this.ensure();
+  }
+
   note(freq: number, delay = 0, dur = 0.2, amp = 0.2, type: OscillatorType = 'triangle') {
     const ctx = this.ensure();
     if (!ctx || !Number.isFinite(freq) || freq <= 0) return;

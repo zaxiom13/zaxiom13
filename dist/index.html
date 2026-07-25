@@ -9,23 +9,214 @@
     <title>q·sketch — learn q/kdb+ through creative coding</title>
     <meta
       name="description"
-      content="A client-side q (kdb+) interpreter wired to p5.js. Turn tables into scenes, learn q through creative coding."
+      content="A client-side q (kdb+) interpreter wired to a canvas. Turn tables into scenes, learn q through creative coding."
     />
     <meta name="theme-color" content="#0b0e13" />
-    <link rel="preconnect" href="https://fonts.googleapis.com" />
-    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-    <link
-      href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;700&family=Inter:wght@400;500;600;700&display=swap"
-      rel="stylesheet"
-    />
     <link
       rel="icon"
       href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='8' fill='%230b0e13'/%3E%3Ctext x='16' y='23' font-size='20' font-family='monospace' fill='%235ec2ff' text-anchor='middle'%3Eq%3C/text%3E%3C/svg%3E"
     />
-    <script type="module" crossorigin src="./assets/index-BcEtvgBD.js"></script>
-    <link rel="stylesheet" crossorigin href="./assets/index-pLicKlvU.css">
+
+    <!-- the shell paints before any JavaScript arrives -->
+    <style>
+      :root {
+        color-scheme: dark;
+      }
+      html,
+      body {
+        margin: 0;
+        height: 100%;
+        background: #0b0e13;
+        color: #dfe7ef;
+        font-family: system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+      }
+      #boot {
+        position: fixed;
+        inset: 0;
+        z-index: 999;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        gap: 14px;
+        padding: 24px;
+        background: radial-gradient(120% 80% at 50% 0%, #131b26 0%, #0b0e13 60%);
+        transition: opacity 0.25s ease;
+      }
+      #boot.gone {
+        opacity: 0;
+        pointer-events: none;
+      }
+      #boot .logo {
+        font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+        font-size: 28px;
+        font-weight: 700;
+        letter-spacing: -0.5px;
+      }
+      #boot .logo b {
+        color: #5ec2ff;
+      }
+      #boot .logo i {
+        color: #ff7ab2;
+        font-style: normal;
+      }
+      #boot .tag {
+        color: #8fa1b3;
+        font-size: 13px;
+        margin-top: -8px;
+        text-align: center;
+      }
+      #boot .track {
+        width: min(280px, 70vw);
+        height: 6px;
+        border-radius: 3px;
+        background: #1d2631;
+        overflow: hidden;
+      }
+      #boot .bar {
+        height: 100%;
+        width: 6%;
+        border-radius: 3px;
+        background: linear-gradient(90deg, #1f6feb, #5ec2ff);
+        transition: width 0.22s ease;
+      }
+      #boot .status {
+        font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+        font-size: 11.5px;
+        color: #5f7183;
+        min-height: 16px;
+        text-align: center;
+      }
+      #boot .err {
+        display: none;
+        max-width: min(560px, 92vw);
+        background: #17110f;
+        border: 1px solid #6e2b2b;
+        border-radius: 10px;
+        padding: 12px 14px;
+        color: #ff9b9b;
+        font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+        font-size: 12px;
+        white-space: pre-wrap;
+        overflow: auto;
+        max-height: 40vh;
+      }
+      #boot .retry {
+        display: none;
+        background: #17324a;
+        border: 1px solid #2a6a9e;
+        color: #cfe9ff;
+        border-radius: 8px;
+        padding: 7px 14px;
+        font-size: 13px;
+        cursor: pointer;
+      }
+      #boot.failed .bar {
+        background: #b3413f;
+      }
+      #boot.failed .err,
+      #boot.failed .retry {
+        display: block;
+      }
+    </style>
+    <script type="module" crossorigin src="./assets/index-CIk235Pq.js"></script>
+    <link rel="modulepreload" crossorigin href="./assets/value-CtszUZQI.js">
+    <link rel="stylesheet" crossorigin href="./assets/index-8D9OM6HA.css">
   </head>
   <body>
+    <div id="boot" role="status" aria-live="polite">
+      <div class="logo"><b>q</b><i>·</i>sketch</div>
+      <div class="tag">a q/kdb+ interpreter and a canvas, entirely in your browser</div>
+      <div class="track"><div class="bar" id="boot-bar"></div></div>
+      <div class="status" id="boot-status">loading…</div>
+      <pre class="err" id="boot-err"></pre>
+      <button class="retry" onclick="location.reload()">reload</button>
+    </div>
+
+    <script>
+      // progress reporting, available before the bundle has parsed
+      (function () {
+        var bar = document.getElementById('boot-bar');
+        var status = document.getElementById('boot-status');
+        var box = document.getElementById('boot');
+        var err = document.getElementById('boot-err');
+        var done = false;
+        var pct = 0;
+        window.__boot = {
+          step: function (p, label) {
+            if (done) return;
+            pct = Math.max(pct, p);
+            bar.style.width = pct + '%';
+            if (label) status.textContent = label;
+          },
+          fail: function (msg) {
+            done = true;
+            box.classList.add('failed');
+            box.classList.remove('gone');
+            status.textContent = 'could not start';
+            err.textContent = String(msg);
+          },
+          done: function () {
+            if (done) return;
+            done = true;
+            bar.style.width = '100%';
+            box.classList.add('gone');
+            setTimeout(function () {
+              box.style.display = 'none';
+            }, 300);
+          },
+        };
+        // resource failures do not bubble, so listen in the capture phase
+        window.addEventListener(
+          'error',
+          function (e) {
+            if (done) return;
+            var t = e.target;
+            if (t && (t.tagName === 'SCRIPT' || t.tagName === 'LINK')) {
+              if (t.tagName === 'LINK') return; // a missing font is not fatal
+              window.__boot.fail(
+                'Could not download the application bundle.\n\nCheck your connection and reload — everything runs locally once it is here.'
+              );
+              return;
+            }
+            if (e.message || e.error) window.__boot.fail((e.error && e.error.stack) || e.message);
+          },
+          true
+        );
+        window.addEventListener('unhandledrejection', function (e) {
+          if (!done) window.__boot.fail((e.reason && (e.reason.stack || e.reason.message)) || e.reason);
+        });
+        // watchdogs: reassure, then give up with something actionable
+        setTimeout(function () {
+          if (!done) window.__boot.step(pct, 'still loading — slow connection?');
+        }, 6000);
+        setTimeout(function () {
+          if (!done && pct < 55) document.querySelector('#boot .retry').style.display = 'block';
+        }, 12000);
+        setTimeout(function () {
+          if (!done)
+            window.__boot.fail(
+              'The app did not finish loading.\n\nThis is usually a flaky network. Reloading normally fixes it — everything runs locally in the browser once it is here.'
+            );
+        }, 25000);
+        window.__boot.step(8, 'fetching the interpreter…');
+      })();
+    </script>
+
     <div id="app"></div>
+
+    <!-- the code font is nice to have, not needed to paint -->
+    <link
+      rel="preload"
+      as="style"
+      href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;700&display=swap"
+      onload="this.onload=null;this.rel='stylesheet'"
+    />
+    <noscript>
+      <link
+        rel="stylesheet"
+        href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;700&display=swap"
+      />
+    </noscript>
   </body>
 </html>

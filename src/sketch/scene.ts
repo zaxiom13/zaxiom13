@@ -3,31 +3,30 @@
 // A "scene" is an ordinary q table where every row is a shape. Columns are
 // optional; anything missing falls back to a default. This is what makes the
 // whole thing q-idiomatic: you build pictures with select/update/join.
+//
+// The renderer reads raw column arrays rather than boxed q values, so a scene
+// with tens of thousands of rows costs no allocation per row.
 
-import type p5 from 'p5';
+import type { Sketch as p5 } from './canvas';
 import {
   QValue,
   QTable,
   QDict,
+  QAtom,
+  QVector,
   count,
   at,
-  raw,
+  items,
   isTable,
   isDict,
   isAtom,
-  QAtom,
-  QVector,
+  table,
+  enlist,
+  symvec,
+  listFrom,
 } from '../q/value';
 
-export interface SceneDefaults {
-  fill: string;
-  stroke: string;
-  sw: number;
-  size: number;
-  r: number;
-}
-
-const NAMED: Record<string, string> = {
+export const NAMED_COLORS: Record<string, string> = {
   black: '#000000',
   white: '#ffffff',
   red: '#ff3b30',
@@ -60,136 +59,287 @@ export function toColor(v: QValue | undefined, dflt: string): string {
   if (isAtom(v)) {
     const t = Math.abs(v.t);
     const val = (v as QAtom).v;
-    if (t === 11 || t === 10) {
-      const s = String(val);
-      if (!s) return dflt;
-      if (s[0] === '#') return s;
-      const n = NAMED[s.toLowerCase()];
-      if (n) return n;
-      return s;
-    }
-    if (t === 9 || t === 8) {
-      const g = Math.round(Math.max(0, Math.min(1, val as number)) * 255);
-      return `rgb(${g},${g},${g})`;
-    }
-    if (t === 7 || t === 6 || t === 5 || t === 4) {
-      const g = Math.round(Math.max(0, Math.min(255, val as number)));
-      return `rgb(${g},${g},${g})`;
-    }
+    if (t === 11 || t === 10) return cssOfString(String(val), dflt);
+    if (t === 9 || t === 8) return greyOf(val as number, true);
+    if (t === 7 || t === 6 || t === 5 || t === 4) return greyOf(val as number, false);
     if (t === 1) return val ? '#ffffff' : '#000000';
     return dflt;
   }
-  if (v.t === 10) {
-    const s = (v as QVector).v as string;
-    return s[0] === '#' ? s : NAMED[s.toLowerCase()] ?? s;
-  }
+  if (v.t === 10) return cssOfString((v as QVector).v as string, dflt);
   if (v.t >= 1 && v.t <= 9) {
     const arr = (v as QVector).v as number[];
     if (arr.length >= 3) {
       const sc = v.t === 9 || v.t === 8 ? 255 : 1;
       return `rgb(${Math.round(arr[0] * sc)},${Math.round(arr[1] * sc)},${Math.round(arr[2] * sc)})`;
     }
-    if (arr.length === 1) {
-      const g = Math.round(arr[0] * (v.t === 9 || v.t === 8 ? 255 : 1));
-      return `rgb(${g},${g},${g})`;
-    }
+    if (arr.length === 1) return greyOf(arr[0], v.t === 9 || v.t === 8);
   }
   return dflt;
 }
 
-interface Col {
-  name: string;
-  get: (i: number) => any;
-  isNull: (i: number) => boolean;
+function cssOfString(s: string, dflt: string): string {
+  if (!s) return dflt;
+  if (s.charCodeAt(0) === 35) return s; // '#'
+  return NAMED_COLORS[s.toLowerCase()] ?? s;
 }
 
-function columns(t: QTable): Record<string, (i: number) => QValue> {
-  const out: Record<string, (i: number) => QValue> = {};
-  t.c.forEach((name, ci) => {
-    const col = t.v[ci];
-    out[name] = (i: number) => at(col, i);
-  });
+function greyOf(v: number, unit: boolean): string {
+  const g = Math.round(Math.max(0, Math.min(unit ? 1 : 255, v)) * (unit ? 255 : 1));
+  return `rgb(${g},${g},${g})`;
+}
+
+/** CSS colour with alpha folded in, cached (used by the raw-canvas fast path) */
+const alphaCache = new Map<string, string>();
+function cssAlpha(css: string, alpha: number): string {
+  if (alpha >= 1) return css;
+  const key = css + '|' + alpha.toFixed(3);
+  let out = alphaCache.get(key);
+  if (out === undefined) {
+    if (alphaCache.size > 4096) alphaCache.clear();
+    let r = 0,
+      g = 0,
+      b = 0;
+    if (css.charCodeAt(0) === 35) {
+      const hex = css.length === 4
+        ? css[1] + css[1] + css[2] + css[2] + css[3] + css[3]
+        : css.slice(1, 7);
+      const v = parseInt(hex, 16);
+      r = (v >> 16) & 255;
+      g = (v >> 8) & 255;
+      b = v & 255;
+    } else {
+      const m = /rgba?\(([^)]+)\)/.exec(css);
+      if (m) {
+        const parts = m[1].split(',').map((x) => parseFloat(x));
+        [r, g, b] = parts;
+      }
+    }
+    out = `rgba(${r},${g},${b},${alpha})`;
+    alphaCache.set(key, out);
+  }
   return out;
 }
 
-const num = (v: QValue | undefined, d: number): number => {
-  if (v === undefined) return d;
-  if (isAtom(v)) {
-    const x = (v as QAtom).v;
-    if (typeof x === 'bigint') return Number(x);
-    if (typeof x === 'number') return Number.isNaN(x) ? d : x;
-    if (typeof x === 'string') return d;
+// p5 parses colour strings on every call, so cache the parsed objects
+const colorCache = new Map<string, any>();
+function p5color(p: p5, css: string, alpha: number): any {
+  const key = alpha >= 1 ? css : css + '|' + alpha.toFixed(3);
+  let c = colorCache.get(key);
+  if (c === undefined) {
+    if (colorCache.size > 4096) colorCache.clear();
+    c = p.color(css);
+    if (alpha < 1) (c as any).setAlpha(255 * alpha);
+    colorCache.set(key, c);
   }
-  return d;
-};
-
-const text = (v: QValue | undefined): string => {
-  if (v === undefined) return '';
-  if (isAtom(v)) return String((v as QAtom).v);
-  if (v.t === 10) return (v as QVector).v as string;
-  if (v.t === 11) return ((v as QVector).v as string[]).join(' ');
-  return '';
-};
+  return c;
+}
 
 export interface DrawOpts {
   defaultFill: string;
   defaultStroke: string;
 }
 
-/** Draw one scene table onto a p5 instance. */
+/** A column, unboxed once per frame. */
+interface Col {
+  n?: number[]; // numeric
+  s?: string[]; // symbol / char
+  v?: QValue[]; // anything else (nested lists, mixed)
+  atomNum?: number;
+  atomStr?: string;
+  atomVal?: QValue;
+}
+
+function unbox(col: QValue): Col {
+  const t = col.t;
+  if (t === 11) return { s: (col as QVector).v as string[] };
+  if (t === 10) return { s: ((col as QVector).v as string).split('') };
+  if (t > 0 && t <= 19) return { n: (col as QVector).v as number[] };
+  if (t === 0) {
+    const arr = (col as QVector).v as QValue[];
+    // a column of strings ("abc";"de") is common for text
+    if (arr.length && arr.every((e) => e.t === 10))
+      return { s: arr.map((e) => (e as QVector).v as string) };
+    return { v: arr };
+  }
+  if (isAtom(col)) {
+    const v = (col as QAtom).v;
+    if (typeof v === 'string') return { atomStr: v, atomVal: col };
+    return { atomNum: typeof v === 'bigint' ? Number(v) : (v as number), atomVal: col };
+  }
+  return { v: [col] };
+}
+
+const numAt = (c: Col | undefined, i: number, dflt: number): number => {
+  if (!c) return dflt;
+  if (c.n) {
+    const v = c.n[i];
+    return typeof v === 'number' && !Number.isNaN(v) ? v : dflt;
+  }
+  if (c.atomNum !== undefined) return c.atomNum;
+  if (c.v) {
+    const e = c.v[i];
+    if (e && isAtom(e)) {
+      const v = (e as QAtom).v;
+      if (typeof v === 'number') return Number.isNaN(v) ? dflt : v;
+      if (typeof v === 'bigint') return Number(v);
+    }
+  }
+  return dflt;
+};
+
+const strAt = (c: Col | undefined, i: number): string | undefined => {
+  if (!c) return undefined;
+  if (c.s) return c.s[i];
+  if (c.atomStr !== undefined) return c.atomStr;
+  if (c.n) return String(c.n[i]);
+  if (c.atomNum !== undefined) return String(c.atomNum);
+  if (c.v) {
+    const e = c.v[i];
+    if (!e) return undefined;
+    if (e.t === 10) return (e as QVector).v as string;
+    if (isAtom(e)) return String((e as QAtom).v);
+  }
+  return undefined;
+};
+
+const cssAt = (c: Col | undefined, i: number, dflt: string): string => {
+  if (!c) return dflt;
+  if (c.s) return cssOfString(c.s[i], dflt);
+  if (c.atomStr !== undefined) return cssOfString(c.atomStr, dflt);
+  if (c.n) return greyOf(c.n[i], !Number.isInteger(c.n[i]));
+  if (c.atomNum !== undefined) return greyOf(c.atomNum, !Number.isInteger(c.atomNum));
+  if (c.v) return toColor(c.v[i], dflt);
+  return dflt;
+};
+
+const valAt = (c: Col | undefined, i: number): QValue | undefined => {
+  if (!c) return undefined;
+  if (c.v) return c.v[i];
+  return c.atomVal;
+};
+
+/** Draw one scene table (or a list of them) onto a p5 instance. */
 export function drawScene(p: p5, scene: QValue, opts: DrawOpts): number {
+  // a list of scenes draws them all, so `draw (a;b;c)` works
+  if (scene.t === 0 && count(scene) > 0) {
+    let total = 0;
+    const n = count(scene);
+    for (let i = 0; i < n; i++) total += drawScene(p, at(scene, i), opts);
+    return total;
+  }
   if (isDict(scene) && !isTable(scene)) {
     // a single shape given as a dictionary
     const d = scene as QDict;
-    const keys = (d.k as QVector).v as string[];
-    const cols: Record<string, QValue> = {};
-    keys.forEach((k, i) => (cols[k] = at(d.v, i)));
-    drawRow(p, (n) => cols[n], opts);
-    return 1;
+    const keys = items(d.k).map((k) => String((k as QAtom).v));
+    return drawScene(
+      p,
+      table(keys, items(d.v).map((v) => enlist(v))),
+      opts
+    );
   }
   if (!isTable(scene)) return 0;
   const t = scene as QTable;
   const n = count(t);
-  const getters = columns(t);
-  for (let i = 0; i < n; i++) {
-    drawRow(p, (name) => (getters[name] ? getters[name](i) : undefined), opts);
-  }
+  if (!n) return 0;
+
+  const cols: Record<string, Col> = Object.create(null);
+  t.c.forEach((name, ci) => (cols[name] = unbox(t.v[ci])));
+
+  const shape = cols['shape'];
+  const rot = cols['rot'];
+  const hasAnyRot = !!rot;
+  // big scenes bypass p5 and talk to the canvas directly
+  const ctx = n > 400 ? ((p as any).drawingContext as CanvasRenderingContext2D) : null;
+  for (let i = 0; i < n; i++) drawRow(p, cols, i, shape, hasAnyRot, opts, ctx);
   return n;
 }
 
-function applyStyle(
-  p: p5,
-  get: (n: string) => QValue | undefined,
-  opts: DrawOpts,
-  defaultFilled: boolean
-) {
-  const fillV = get('fill');
-  const strokeV = get('stroke');
-  const alpha = num(get('a'), 1);
-  const f = toColor(fillV, defaultFilled ? opts.defaultFill : 'none');
-  const s = toColor(strokeV, strokeV === undefined && !defaultFilled ? opts.defaultStroke : 'none');
-  if (f === 'none') p.noFill();
-  else {
-    const c = p.color(f);
-    (c as any).setAlpha(255 * alpha);
-    p.fill(c);
-  }
-  if (s === 'none') p.noStroke();
-  else {
-    const c = p.color(s);
-    (c as any).setAlpha(255 * alpha);
-    p.stroke(c);
-    p.strokeWeight(num(get('sw'), 1));
+/** returns true when the row was drawn straight onto the 2d context */
+function fastDraw(
+  ctx: CanvasRenderingContext2D,
+  shape: string,
+  cols: Record<string, Col>,
+  i: number,
+  x: number,
+  y: number,
+  opts: DrawOpts
+): boolean {
+  const alpha = numAt(cols['a'], i, 1);
+  const fillCol = cols['fill'];
+  const strokeCol = cols['stroke'];
+  const filled = shape !== 'ring' && shape !== 'box' && shape !== 'point';
+  const f = fillCol ? cssAt(fillCol, i, opts.defaultFill) : filled ? opts.defaultFill : 'none';
+  const st = strokeCol ? cssAt(strokeCol, i, opts.defaultStroke) : filled ? 'none' : opts.defaultStroke;
+
+  switch (shape) {
+    case 'rect':
+    case 'square': {
+      const w = numAt(cols['w'], i, numAt(cols['r'], i, 10) * 2);
+      const h = numAt(cols['h'], i, w);
+      if (f !== 'none') {
+        ctx.fillStyle = cssAlpha(f, alpha);
+        ctx.fillRect(x - w / 2, y - h / 2, w, h);
+      }
+      if (st !== 'none') {
+        ctx.strokeStyle = cssAlpha(st, alpha);
+        ctx.lineWidth = numAt(cols['sw'], i, 1);
+        ctx.strokeRect(x - w / 2, y - h / 2, w, h);
+      }
+      return true;
+    }
+    case 'point': {
+      const sw = numAt(cols['sw'], i, numAt(cols['r'], i, 2));
+      const css = fillCol || strokeCol ? (f !== 'none' ? f : st) : opts.defaultStroke;
+      ctx.fillStyle = cssAlpha(css === 'none' ? opts.defaultStroke : css, alpha);
+      ctx.fillRect(x - sw / 2, y - sw / 2, sw, sw);
+      return true;
+    }
+    case 'circle':
+    case 'dot': {
+      const r = numAt(cols['r'], i, 10);
+      ctx.beginPath();
+      ctx.arc(x, y, Math.abs(r), 0, 6.283185307179586);
+      if (f !== 'none') {
+        ctx.fillStyle = cssAlpha(f, alpha);
+        ctx.fill();
+      }
+      if (st !== 'none') {
+        ctx.strokeStyle = cssAlpha(st, alpha);
+        ctx.lineWidth = numAt(cols['sw'], i, 1);
+        ctx.stroke();
+      }
+      return true;
+    }
+    case 'line': {
+      if (st === 'none' && f === 'none') return true;
+      ctx.beginPath();
+      ctx.moveTo(x, y);
+      ctx.lineTo(numAt(cols['x2'], i, x + 10), numAt(cols['y2'], i, y));
+      ctx.strokeStyle = cssAlpha(st !== 'none' ? st : f, alpha);
+      ctx.lineWidth = numAt(cols['sw'], i, 1);
+      ctx.stroke();
+      return true;
+    }
+    default:
+      return false;
   }
 }
 
-function drawRow(p: p5, get: (n: string) => QValue | undefined, opts: DrawOpts) {
-  const shapeV = get('shape');
-  const shape = shapeV === undefined ? 'circle' : text(shapeV) || 'circle';
-  const x = num(get('x'), 0);
-  const y = num(get('y'), 0);
-  const rot = num(get('rot'), 0);
+function drawRow(
+  p: p5,
+  cols: Record<string, Col>,
+  i: number,
+  shapeCol: Col | undefined,
+  hasAnyRot: boolean,
+  opts: DrawOpts,
+  ctx: CanvasRenderingContext2D | null = null
+) {
+  const shape = (shapeCol ? strAt(shapeCol, i) : undefined) || 'circle';
+  const x = numAt(cols['x'], i, 0);
+  const y = numAt(cols['y'], i, 0);
+  const rot = hasAnyRot ? numAt(cols['rot'], i, 0) : 0;
   const hasRot = rot !== 0;
+  if (ctx && !hasRot && fastDraw(ctx, shape, cols, i, x, y, opts)) return;
   if (hasRot) {
     p.push();
     p.translate(x, y);
@@ -197,117 +347,154 @@ function drawRow(p: p5, get: (n: string) => QValue | undefined, opts: DrawOpts) 
   }
   const px = hasRot ? 0 : x;
   const py = hasRot ? 0 : y;
+  const ox = hasRot ? x : 0;
+  const oy = hasRot ? y : 0;
 
   switch (shape) {
     case 'circle':
     case 'dot': {
-      applyStyle(p, get, opts, true);
-      const r = num(get('r'), 10);
-      p.circle(px, py, r * 2);
+      style(p, cols, i, opts, true);
+      p.circle(px, py, 2 * numAt(cols['r'], i, 10));
       break;
     }
     case 'ellipse': {
-      applyStyle(p, get, opts, true);
-      p.ellipse(px, py, num(get('w'), num(get('r'), 10) * 2), num(get('h'), num(get('r'), 10) * 2));
+      style(p, cols, i, opts, true);
+      const r = numAt(cols['r'], i, 10);
+      p.ellipse(px, py, numAt(cols['w'], i, r * 2), numAt(cols['h'], i, r * 2));
       break;
     }
     case 'ring': {
-      applyStyle(p, get, opts, false);
-      const r = num(get('r'), 10);
+      style(p, cols, i, opts, false);
       p.noFill();
-      p.circle(px, py, r * 2);
+      p.circle(px, py, 2 * numAt(cols['r'], i, 10));
       break;
     }
     case 'rect':
     case 'square': {
-      applyStyle(p, get, opts, true);
-      const w = num(get('w'), num(get('r'), 10) * 2);
-      const h = num(get('h'), w);
+      style(p, cols, i, opts, true);
+      const w = numAt(cols['w'], i, numAt(cols['r'], i, 10) * 2);
       p.rectMode(p.CENTER);
-      p.rect(px, py, w, h, num(get('round'), 0));
+      p.rect(px, py, w, numAt(cols['h'], i, w), numAt(cols['round'], i, 0));
       break;
     }
     case 'box': {
-      applyStyle(p, get, opts, false);
-      const w = num(get('w'), num(get('r'), 10) * 2);
-      const h = num(get('h'), w);
+      style(p, cols, i, opts, false);
+      const w = numAt(cols['w'], i, numAt(cols['r'], i, 10) * 2);
       p.rectMode(p.CENTER);
       p.noFill();
-      p.rect(px, py, w, h, num(get('round'), 0));
+      p.rect(px, py, w, numAt(cols['h'], i, w), numAt(cols['round'], i, 0));
       break;
     }
     case 'line': {
-      applyStyle(p, get, opts, false);
-      p.line(px, py, num(get('x2'), px + 10) - (hasRot ? x : 0), num(get('y2'), py) - (hasRot ? y : 0));
+      style(p, cols, i, opts, false);
+      p.line(px, py, numAt(cols['x2'], i, x + 10) - ox, numAt(cols['y2'], i, y) - oy);
       break;
     }
     case 'tri':
     case 'triangle': {
-      applyStyle(p, get, opts, true);
-      const r = num(get('r'), 12);
-      const x2 = get('x2') !== undefined ? num(get('x2'), 0) - (hasRot ? x : 0) : px - r;
-      const y2 = get('y2') !== undefined ? num(get('y2'), 0) - (hasRot ? y : 0) : py + r;
-      const x3 = get('x3') !== undefined ? num(get('x3'), 0) - (hasRot ? x : 0) : px + r;
-      const y3 = get('y3') !== undefined ? num(get('y3'), 0) - (hasRot ? y : 0) : py + r;
-      p.triangle(px, py - (get('x2') === undefined ? r : 0), x2, y2, x3, y3);
+      style(p, cols, i, opts, true);
+      const r = numAt(cols['r'], i, 12);
+      if (cols['x2'] === undefined) {
+        const dx = r * 0.8660254037844387; // sin 120
+        const dy = r * 0.5;
+        p.triangle(px, py - r, px + dx, py + dy, px - dx, py + dy);
+      } else {
+        p.triangle(
+          px,
+          py,
+          numAt(cols['x2'], i, 0) - ox,
+          numAt(cols['y2'], i, 0) - oy,
+          numAt(cols['x3'], i, 0) - ox,
+          numAt(cols['y3'], i, 0) - oy
+        );
+      }
       break;
     }
     case 'arc': {
-      applyStyle(p, get, opts, false);
-      const r = num(get('r'), 20);
-      p.arc(px, py, r * 2, r * 2, num(get('a0'), 0), num(get('a1'), Math.PI));
+      style(p, cols, i, opts, false);
+      const r = numAt(cols['r'], i, 20);
+      p.arc(px, py, r * 2, r * 2, numAt(cols['a0'], i, 0), numAt(cols['a1'], i, Math.PI));
       break;
     }
     case 'text':
     case 'txt': {
-      applyStyle(p, get, opts, true);
+      const css = cssAt(cols['fill'], i, opts.defaultFill);
       p.noStroke();
-      const c = toColor(get('fill'), opts.defaultFill);
-      if (c !== 'none') p.fill(c);
+      if (css !== 'none') p.fill(p5color(p, css, numAt(cols['a'], i, 1)));
       p.textAlign(p.CENTER, p.CENTER);
-      p.textSize(num(get('size'), 16));
-      p.text(text(get('txt') ?? get('text') ?? get('s')), px, py);
+      p.textSize(numAt(cols['size'], i, 16));
+      p.text(strAt(cols['txt'], i) ?? strAt(cols['text'], i) ?? strAt(cols['s'], i) ?? '', px, py);
       break;
     }
     case 'point': {
-      const c = toColor(get('fill') ?? get('stroke'), opts.defaultStroke);
-      p.stroke(c === 'none' ? opts.defaultStroke : c);
-      p.strokeWeight(num(get('sw'), num(get('r'), 2)));
+      const css = cssAt(cols['fill'] ?? cols['stroke'], i, opts.defaultStroke);
+      p.stroke(p5color(p, css === 'none' ? opts.defaultStroke : css, numAt(cols['a'], i, 1)));
+      p.strokeWeight(numAt(cols['sw'], i, numAt(cols['r'], i, 2)));
       p.point(px, py);
       break;
     }
     case 'poly':
     case 'path': {
-      applyStyle(p, get, opts, shape === 'poly');
-      const pts = get('pts');
+      style(p, cols, i, opts, shape === 'poly');
+      const pts = valAt(cols['pts'], i);
       p.beginShape();
       if (pts !== undefined) {
-        const n = count(pts);
-        for (let i = 0; i < n; i++) {
-          const pt = at(pts, i);
-          p.vertex(num(at(pt, 0), 0) - (hasRot ? x : 0), num(at(pt, 1), 0) - (hasRot ? y : 0));
+        const m = count(pts);
+        for (let k = 0; k < m; k++) {
+          const pt = at(pts, k);
+          const vx = (pt as QVector).v as number[];
+          if (Array.isArray(vx)) p.vertex(vx[0] - ox, vx[1] - oy);
+          else {
+            const a0 = at(pt, 0) as QAtom;
+            const a1 = at(pt, 1) as QAtom;
+            p.vertex(Number(a0.v) - ox, Number(a1.v) - oy);
+          }
         }
       }
-      if (shape === 'poly') p.endShape(p.CLOSE);
-      else p.endShape();
+      p.endShape(shape === 'poly' ? p.CLOSE : undefined);
       break;
     }
     case 'ngon': {
-      applyStyle(p, get, opts, true);
-      const r = num(get('r'), 20);
-      const sides = Math.max(3, Math.round(num(get('n'), 5)));
+      style(p, cols, i, opts, true);
+      const r = numAt(cols['r'], i, 20);
+      const sides = Math.max(3, Math.round(numAt(cols['n'], i, 5)));
       p.beginShape();
-      for (let i = 0; i < sides; i++) {
-        const a = (i / sides) * Math.PI * 2 - Math.PI / 2;
+      for (let k = 0; k < sides; k++) {
+        const a = (k / sides) * Math.PI * 2 - Math.PI / 2;
         p.vertex(px + r * Math.cos(a), py + r * Math.sin(a));
       }
       p.endShape(p.CLOSE);
       break;
     }
     default: {
-      applyStyle(p, get, opts, true);
-      p.circle(px, py, num(get('r'), 10) * 2);
+      style(p, cols, i, opts, true);
+      p.circle(px, py, numAt(cols['r'], i, 10) * 2);
     }
   }
   if (hasRot) p.pop();
+}
+
+function style(
+  p: p5,
+  cols: Record<string, Col>,
+  i: number,
+  opts: DrawOpts,
+  defaultFilled: boolean
+) {
+  const alpha = numAt(cols['a'], i, 1);
+  const fillCol = cols['fill'];
+  const strokeCol = cols['stroke'];
+  const f = fillCol ? cssAt(fillCol, i, opts.defaultFill) : defaultFilled ? opts.defaultFill : 'none';
+  const s = strokeCol
+    ? cssAt(strokeCol, i, opts.defaultStroke)
+    : defaultFilled
+    ? 'none'
+    : opts.defaultStroke;
+  if (f === 'none') p.noFill();
+  else p.fill(p5color(p, f, alpha));
+  if (s === 'none') p.noStroke();
+  else {
+    p.stroke(p5color(p, s, alpha));
+    p.strokeWeight(numAt(cols['sw'], i, 1));
+  }
 }

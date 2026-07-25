@@ -13,7 +13,7 @@
   --warn: #f2b45c;
   --err: #ff6b6b;
   --code: 'JetBrains Mono', ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
-  --sans: 'Inter', system-ui, -apple-system, 'Segoe UI', sans-serif;
+  --sans: system-ui, -apple-system, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
   --radius: 10px;
   --header-h: 48px;
 }
@@ -230,10 +230,74 @@ kbd {
   max-height: 100%;
   touch-action: none;
 }
+.dpad {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  padding: 10px 12px 12px;
+  pointer-events: none;
+  gap: 12px;
+}
+.dpad[hidden] {
+  display: none;
+}
+.dpad-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 42px);
+  grid-template-rows: repeat(2, 42px);
+  gap: 4px;
+  pointer-events: auto;
+}
+.dpad-grid button:nth-child(1) {
+  grid-column: 2;
+  grid-row: 1;
+}
+.dpad-grid button:nth-child(2) {
+  grid-column: 1;
+  grid-row: 2;
+}
+.dpad-grid button:nth-child(3) {
+  grid-column: 2;
+  grid-row: 2;
+}
+.dpad-grid button:nth-child(4) {
+  grid-column: 3;
+  grid-row: 2;
+}
+.dpad button,
+.dpad-action {
+  background: rgba(20, 28, 38, 0.66);
+  border: 1px solid var(--line);
+  color: #9fb4c7;
+  border-radius: 10px;
+  font-size: 15px;
+  padding: 0;
+  backdrop-filter: blur(4px);
+  touch-action: none;
+  user-select: none;
+}
+.dpad-action {
+  pointer-events: auto;
+  width: 60px;
+  height: 60px;
+  border-radius: 50%;
+  font-size: 20px;
+}
+.dpad button.held {
+  background: rgba(94, 194, 255, 0.35);
+  color: #fff;
+  border-color: var(--accent);
+}
+
 .canvas-badges {
   position: absolute;
   left: 8px;
   bottom: 8px;
+  transition: bottom 0.15s, top 0.15s;
   display: flex;
   gap: 6px;
   pointer-events: none;
@@ -251,6 +315,11 @@ kbd {
 .badge.mode {
   color: var(--accent);
 }
+.canvas-wrap.with-dpad .canvas-badges {
+  bottom: auto;
+  top: 40px;
+}
+
 .canvas-tools {
   position: absolute;
   right: 8px;
@@ -274,6 +343,23 @@ kbd {
 }
 .cm-editor {
   height: 100%;
+}
+
+/* the pre-CodeMirror editor: same look, instantly interactive */
+.plain-editor {
+  width: 100%;
+  height: 100%;
+  border: 0;
+  outline: none;
+  resize: none;
+  background: transparent;
+  color: var(--fg);
+  font-family: var(--code);
+  font-size: var(--code-size, 13.5px);
+  line-height: 1.55;
+  padding: 10px 12px;
+  tab-size: 2;
+  caret-color: var(--accent);
 }
 
 .keypad {

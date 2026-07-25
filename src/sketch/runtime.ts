@@ -1,6 +1,7 @@
 // The bridge between the q interpreter and p5.js.
 
-import type p5 from 'p5';
+import { Sketch } from './canvas';
+type p5 = Sketch;
 import { Interp } from '../q/eval';
 import {
   QValue,
@@ -34,11 +35,13 @@ import {
   raw,
   QVector,
 } from '../q/value';
-import { drawScene, toColor } from './scene';
+import { drawScene, toColor, NAMED_COLORS } from './scene';
+import { installShapes } from './shapes';
+
 import { PALETTES } from './palette';
 import { AudioEngine } from './audio';
 
-export type SketchMode = 'idle' | 'static' | 'frame' | 'state' | 'imperative';
+export type SketchMode = 'idle' | 'static' | 'frame' | 'state' | 'imperative' | 'timer';
 
 export interface RuntimeEvents {
   onError?: (msg: string, hint?: string) => void;
@@ -47,8 +50,6 @@ export interface RuntimeEvents {
 
 export class SketchRuntime {
   p: p5 | null = null;
-  private P5: any = null;
-  private loading: Promise<void> | null = null;
   ip: Interp;
   container: HTMLElement;
   events: RuntimeEvents;
@@ -67,9 +68,24 @@ export class SketchRuntime {
   /** p5 creates the canvas asynchronously; nothing may paint before that */
   private canvasReady = false;
   private pointerSeen = false;
+  /** keys currently held down, as q symbols */
+  keys = new Set<string>();
+  lastKey = '';
+  clicks = 0;
+  wheel = 0;
+  private lastTimer = 0;
+  private keyHandlers: ((e: KeyboardEvent) => void)[] = [];
 
   /** headless runtimes (lesson sessions, tests) never touch the canvas */
   headless: boolean;
+
+  /** the \t interval lives on the interpreter, so \t works without a canvas */
+  get timerMs(): number {
+    return this.ip.timerMs;
+  }
+  set timerMs(v: number) {
+    this.ip.timerMs = v;
+  }
 
   constructor(ip: Interp, container: HTMLElement | null, events: RuntimeEvents = {}) {
     this.ip = ip;
@@ -87,32 +103,57 @@ export class SketchRuntime {
 
   // ------------------------------------------------------------------ p5
 
-  /** p5 is ~900kB, so it is fetched in parallel with the first run. */
+  /** on-screen controls (and tests) can push key state directly */
+  setKey(name: string, down: boolean) {
+    if (down) {
+      this.keys.add(name);
+      this.lastKey = name;
+    } else this.keys.delete(name);
+  }
+
+  /** Window-level key tracking that ignores typing in the editor. */
+  private installKeys() {
+    if (typeof window === 'undefined' || this.headless || this.keyHandlers.length) return;
+    const editable = (t: EventTarget | null) => {
+      const el = t as HTMLElement | null;
+      if (!el || !el.closest) return false;
+      return !!el.closest('input, textarea, [contenteditable="true"], .cm-editor');
+    };
+    const name = (e: KeyboardEvent): string => {
+      const k = e.key;
+      if (k === ' ') return 'space';
+      if (k.startsWith('Arrow')) return k.slice(5).toLowerCase();
+      if (k.length === 1) return k.toLowerCase();
+      return k.toLowerCase();
+    };
+    const down = (e: KeyboardEvent) => {
+      if (editable(e.target)) return;
+      const n = name(e);
+      this.keys.add(n);
+      this.lastKey = n;
+      if (['space', 'up', 'down', 'left', 'right'].includes(n)) e.preventDefault();
+    };
+    const up = (e: KeyboardEvent) => {
+      this.keys.delete(name(e));
+    };
+    const blur = () => this.keys.clear();
+    window.addEventListener('keydown', down);
+    window.addEventListener('keyup', up);
+    window.addEventListener('blur', blur);
+    this.keyHandlers = [down, up];
+  }
+
+  /** kept for symmetry with the old p5 loader: the canvas layer is built in */
   ready(): Promise<void> {
-    if (typeof document === 'undefined' || this.headless) return Promise.resolve();
-    if (!this.loading)
-      this.loading = import('p5').then((m) => {
-        this.P5 = (m as any).default ?? m;
-      });
-    return this.loading;
+    return Promise.resolve();
   }
 
   mount() {
     if (this.p || this.headless) return;
     if (typeof document === 'undefined') return; // headless (tests)
-    if (!this.P5) {
-      void this.ready().then(() => {
-        this.mount();
-        if (this.mode === 'static' || this.mode === 'idle') this.redrawStatic();
-        else {
-          this.running = true;
-          this.p?.loop();
-        }
-      });
-      return;
-    }
     const self = this;
-    this.p = new this.P5((p: p5) => {
+    this.installKeys();
+    this.p = new Sketch((p: p5) => {
       p.setup = () => {
         const { w, h } = self.size();
         const c = p.createCanvas(w, h);
@@ -128,6 +169,14 @@ export class SketchRuntime {
         else self.redrawStatic();
       };
       p.draw = () => self.tick();
+      p.mousePressed = () => {
+        self.clicks++;
+        self.audio.resume();
+      };
+      (p as any).touchStarted = () => {
+        self.clicks++;
+        self.audio.resume();
+      };
       p.windowResized = () => {
         const { w, h } = self.size();
         p.resizeCanvas(w, h);
@@ -165,16 +214,23 @@ export class SketchRuntime {
     const hasFrame = !!lam('frame');
     const hasStep = !!lam('step');
     const hasDraw = !!lam('draw');
-    if (hasStep) {
+    const hasTimer = !!lam('.z.ts') && this.timerMs > 0;
+    this.lastTimer = performance.now();
+    if (hasTimer && !hasStep && !hasFrame && !hasDraw) {
+      this.mode = 'timer';
+    } else if (hasStep) {
       this.mode = 'state';
       const init = g.get('init');
       this.state = init === undefined ? UNIT : isFunc(init) ? this.ip.apply(init, [UNIT]) : init;
+      this.ip.globals.set('state', this.state); // visible from the q) prompt
     } else if (hasFrame) this.mode = 'frame';
     else if (hasDraw) this.mode = 'imperative';
     else this.mode = this.pendingStatic ? 'static' : 'idle';
 
     this.frameNo = 0;
     this.startTime = performance.now();
+    if (this.mode === 'idle' && hasTimer) this.mode = 'timer';
+    if (this.mode === 'static' && hasTimer) this.mode = 'timer';
     if (this.mode === 'static' || this.mode === 'idle') {
       this.running = false;
       this.p?.noLoop();
@@ -182,6 +238,20 @@ export class SketchRuntime {
     } else {
       this.running = true;
       this.paused = false;
+      this.p?.loop();
+    }
+    this.status();
+  }
+
+  /** the \t interval changed: restart the clock, and wake up if needed */
+  retime() {
+    this.lastTimer = performance.now();
+    const ts = this.ip.globals.get('.z.ts');
+    if (this.timerMs > 0 && ts && ts.t === 100 && !this.running) {
+      this.mode = 'timer';
+      this.running = true;
+      this.paused = false;
+      this.mount();
       this.p?.loop();
     }
     this.status();
@@ -223,6 +293,8 @@ export class SketchRuntime {
     this.running = false;
     this.lastShapes = 0;
     this.state = UNIT;
+    this.timerMs = 0;
+    this.clicks = 0;
     if (this.p) {
       this.p.noLoop();
       this.p.background(this.bgColor);
@@ -232,6 +304,8 @@ export class SketchRuntime {
   private status() {
     this.events.onStatus?.({ mode: this.mode, fps: Math.round(this.fps), shapes: this.lastShapes });
   }
+
+  timerFired = false;
 
   private redrawStatic() {
     if (!this.p || !this.canvasReady) {
@@ -259,14 +333,31 @@ export class SketchRuntime {
     this.ip.steps = 0; // the loop guard is per frame, not per session
     try {
       const g = this.ip.globals;
+      // .z.ts fires on its own clock, whatever the drawing mode is
+      const ts = g.get('.z.ts');
+      if (ts && ts.t === 100 && this.timerMs > 0) {
+        while (now - this.lastTimer >= this.timerMs) {
+          this.lastTimer += this.timerMs;
+          if (now - this.lastTimer > 5 * this.timerMs) this.lastTimer = now; // don't spiral
+          this.timerFired = true;
+          this.ip.apply(ts, [(this.ip as any).nowTimestamp?.() ?? float(t)]);
+        }
+      }
       p.background(this.bgColor);
-      if (this.mode === 'frame') {
+      if (this.mode === 'timer') {
+        if (this.pendingStatic)
+          this.lastShapes = drawScene(p, this.pendingStatic, {
+            defaultFill: '#7dd3fc',
+            defaultStroke: '#e5e7eb',
+          });
+      } else if (this.mode === 'frame') {
         const f = g.get('frame')!;
         const scene = this.ip.apply(f, [float(t)]);
         this.lastShapes = drawScene(p, scene, { defaultFill: '#7dd3fc', defaultStroke: '#e5e7eb' });
       } else if (this.mode === 'state') {
         const step = g.get('step')!;
         this.state = this.ip.apply(step, [this.state, float(t)]);
+        g.set('state', this.state);
         const view = g.get('view');
         const scene = view && isFunc(view) ? this.ip.apply(view, [this.state]) : this.state;
         this.lastShapes = drawScene(p, scene, { defaultFill: '#7dd3fc', defaultStroke: '#e5e7eb' });
@@ -307,6 +398,22 @@ export class SketchRuntime {
     g.set('.p5.mx', float(inside ? p.mouseX : p.width / 2));
     g.set('.p5.my', float(inside ? p.mouseY : p.height / 2));
     g.set('.p5.down', bool(!!(p as any).mouseIsPressed));
+    const keys = [...this.keys].sort();
+    g.set('.p5.keys', symvec(keys));
+    g.set('.p5.key', sym(this.lastKey));
+    g.set('.p5.clicks', long(this.clicks));
+    g.set(
+      '.p5.mouse',
+      dict(
+        symvec(['x', 'y', 'down', 'clicks']),
+        listFrom([
+          float(inside ? p.mouseX : p.width / 2),
+          float(inside ? p.mouseY : p.height / 2),
+          bool(!!(p as any).mouseIsPressed),
+          long(this.clicks),
+        ])
+      )
+    );
     const touches = (p as any).touches as { x: number; y: number; id: number }[];
     g.set(
       '.p5.touch',
@@ -352,6 +459,25 @@ export class SketchRuntime {
     /** apply a numeric function elementwise, preserving atom/vector shape */
     const mapNum = (v: QValue, f: (x: number) => number): QValue =>
       isAtom(v) ? float(f(N(v))) : floatvec(nums(v).map(f));
+
+    (ip as any).__rt = self;
+    installShapes(ip);
+
+    def(
+      'pressed',
+      [1],
+      (_ip, [k]) => {
+        const has = (s2: string) => self.keys.has(s2);
+        if (isAtom(k)) return bool(has(String((k as QAtom).v)));
+        const n = count(k);
+        const out = new Array(n);
+        for (let i = 0; i < n; i++) out[i] = has(String((at(k, i) as QAtom).v)) ? 1 : 0;
+        return { t: 1, v: out } as any;
+      },
+      'Is a key held down right now? Vectorised over a list of keys.',
+      'pressed `w  ·  pressed `left`right',
+      ['pressed `space']
+    );
 
     def(
       'draw',
@@ -583,15 +709,23 @@ export class SketchRuntime {
       ['gray 0.5']
     );
 
+    // colours, palettes and shape names live in .p5 so they are discoverable
+    ip.globals.set(
+      '.p5.col',
+      dict(symvec(Object.keys(NAMED_COLORS)), symvec(Object.values(NAMED_COLORS)))
+    );
+    ip.globals.set(
+      '.p5.shapes',
+      symvec([
+        'circle','ring','rect','box','square','line','tri','ngon','text','point','path','poly','arc','ellipse',
+      ])
+    );
+
     // palettes as a plain q dictionary
     const palKeys = Object.keys(PALETTES);
-    ip.globals.set(
-      'pal',
-      dict(
-        symvec(palKeys),
-        listFrom(palKeys.map((k) => symvec(PALETTES[k])))
-      )
-    );
+    const palDict = dict(symvec(palKeys), listFrom(palKeys.map((k) => symvec(PALETTES[k]))));
+    ip.globals.set('pal', palDict);
+    ip.globals.set('.p5.pal', palDict);
 
     // ---- immediate mode ---------------------------------------------------
     const imm = (name: string, ranks: number[], fn: (p: p5, a: QValue[]) => void, doc: string) =>
@@ -700,6 +834,19 @@ export class SketchRuntime {
       '.p5.my': () => float(this.pointerSeen ? this.p?.mouseY ?? 0 : (this.p?.height ?? 600) / 2),
       '.p5.down': () => bool(!!(this.p as any)?.mouseIsPressed),
       '.p5.touch': () => table(['x', 'y', 'id'], [floatvec([]), floatvec([]), longvec([])]),
+      '.p5.keys': () => symvec([...this.keys].sort()),
+      '.p5.key': () => sym(this.lastKey),
+      '.p5.clicks': () => long(this.clicks),
+      '.p5.mouse': () =>
+        dict(
+          symvec(['x', 'y', 'down', 'clicks']),
+          listFrom([
+            float(this.p?.mouseX ?? 0),
+            float(this.p?.mouseY ?? 0),
+            bool(!!(this.p as any)?.mouseIsPressed),
+            long(this.clicks),
+          ])
+        ),
       pi: () => float(Math.PI),
       tau: () => float(Math.PI * 2),
     };

@@ -32,16 +32,58 @@ export function renderReference(host: HTMLElement, getIp: () => Interp, opts: Re
       html: [
         ['draw scene', 'render a table of shapes'],
         ['frame:{[t] scene}', 'animate: a pure function of time'],
-        ['init / step[s;t] / view[s]', 'animate with state'],
+        ['init / step[s;t] / view[s]', 'animate with state (state is live at the q) prompt)'],
+        ['\\t 100 · .z.ts:{[now] …}', 'animate on a kdb+ timer'],
         ['draw:{[t] .p5.circle[…] }', 'immediate mode, if you must'],
+        ['shape builders', 'circles rings rects squares bars lines tris ngons points texts arcs path poly'],
+        ['restyle a scene', 'paint outline fade spin nudge'],
+        ['charts', 'plot y · plot[x;y] · plot (y1;y2) · scatter[x;y] · fitx · fity'],
         ['shape column', '`circle `ring `rect `box `line `tri `ngon `text `point `path `poly `arc `ellipse'],
         ['position', 'x y  (x2 y2 x3 y3 for line/tri, pts for path/poly)'],
         ['size', 'r  w h  size (text)  n (ngon sides)  round (rect corner)'],
         ['style', 'fill stroke sw (weight) a (alpha 0-1) rot (radians)'],
         ['colour', '`red `gold … · `#ff6b6b · hsv[h;s;v] · rgb[r;g;b] · gray x · pal`sunset'],
-        ['inputs', '.p5.t .p5.f .p5.w .p5.h .p5.cx .p5.cy .p5.mx .p5.my .p5.down .p5.touch'],
+        ['mouse', '.p5.mx .p5.my .p5.down .p5.clicks .p5.mouse .p5.touch'],
+        ['keyboard', '.p5.keys .p5.key · pressed `w · pressed `left`right'],
+        ['canvas', '.p5.t .p5.f .p5.w .p5.h .p5.cx .p5.cy · bg `colour'],
         ['helpers', 'grid polar lerp remap clamp wave noise'],
         ['sound', 'beep[freq;dur;amp] · play ([] f:…; t:…; d:…)'],
+      ]
+        .map(([a, b]) => `<b>${a.replace(/&/g, '&amp;').replace(/</g, '&lt;')}</b><span>${b
+          .replace(/&/g, '&amp;')
+          .replace(/</g, '&lt;')}</span>`)
+        .join(''),
+    })
+  );
+
+  host.append(
+    el('h3', {}, 'Values in .z and .Q'),
+    el('div', {
+      class: 'kv',
+      html: [
+        ['.z.p .z.P', 'UTC / local timestamp, right now'],
+        ['.z.t .z.T', 'UTC / local time'],
+        ['.z.d .z.D', 'UTC / local date'],
+        ['.z.n .z.N', 'time since midnight (timespan)'],
+        ['.z.z .z.Z', 'UTC / local datetime'],
+        ['.z.ts', 'your timer callback — assign a function to it'],
+        ['.z.ti', 'the current \\t interval in milliseconds'],
+        ['.Q.a .Q.A .Q.n', 'the alphabets and digits'],
+        ['.Q.s x  .Q.s1 x', 'the console display of a value, as a string'],
+        ['.Q.f[n;x]  .Q.fmt[w;p;x]', 'format numbers'],
+        ['.Q.addmonths[d;n]', 'date arithmetic in months'],
+        ['.Q.id x  .Q.ty x  .Q.qt x', 'sanitise names · type char · is-a-table'],
+        ['.Q.fu[f;x]', 'apply f to the distinct items only'],
+        ['.c.z[re;im] · .c.i', 'complex numbers: a `re`im dictionary'],
+        ['.c.add .c.sub .c.mul .c.div', 'complex arithmetic (reals accepted on either side)'],
+        ['.c.abs .c.arg .c.conj .c.inv', 'modulus · argument · conjugate · reciprocal'],
+        ['.c.exp .c.log .c.sqrt .c.pow', 'and .c.sin .c.cos .c.rot .c.polar .c.expi'],
+        ['.c.roots n · .c.grid[..]', 'roots of unity · a rectangle of the plane'],
+        ['.c.escape[z0;c;n]', 'escape-time iteration: Mandelbrot and Julia'],
+        ['.c.tbl .c.str .c.show', 'as a table · as "3+4i" · print it'],
+        ['.c.fft .c.ifft', 'fast Fourier transform'],
+        ['\\t 100 · \\t expr', 'set the timer · time an expression'],
+        ['\\P 3 · \\S 42 · \\c 40', 'print precision · random seed · console rows'],
       ]
         .map(([a, b]) => `<b>${a.replace(/&/g, '&amp;').replace(/</g, '&lt;')}</b><span>${b
           .replace(/&/g, '&amp;')
@@ -78,17 +120,20 @@ export function renderReference(host: HTMLElement, getIp: () => Interp, opts: Re
     const groups: Record<string, Builtin[]> = {
       Operators: [],
       Keywords: [],
-      'Canvas & sound': [],
+      'Canvas, input & sound': [],
+      'Namespaces (.z .Q .c)': [],
     };
     for (const b of all) {
       const doc = DOCS[b.name];
       const hay = (b.name + ' ' + (doc?.doc ?? b.doc ?? '') + ' ' + (doc?.sig ?? '')).toLowerCase();
       if (ql && !hay.includes(ql)) continue;
-      const group = /^[.a-z]/i.test(b.name)
-        ? SKETCH_NAMES.has(b.name) || b.name.startsWith('.p5.')
-          ? 'Canvas & sound'
-          : 'Keywords'
-        : 'Operators';
+      const group = !/^[.a-z]/i.test(b.name)
+        ? 'Operators'
+        : b.name.startsWith('.z.') || b.name.startsWith('.Q.') || b.name.startsWith('.c.')
+        ? 'Namespaces (.z .Q .c)'
+        : SKETCH_NAMES.has(b.name) || b.name.startsWith('.p5.')
+        ? 'Canvas, input & sound'
+        : 'Keywords';
       groups[group].push(b);
     }
     for (const [name, items] of Object.entries(groups)) {
@@ -167,6 +212,8 @@ function cmpName(a: string, b: string) {
 }
 
 const SKETCH_NAMES = new Set([
+  'circles','rings','rects','squares','bars','lines','tris','ngons','points','texts','arcs',
+  'path','poly','paint','outline','fade','spin','nudge','plot','scatter','fitx','fity','pressed',
   'draw',
   'bg',
   'lerp',

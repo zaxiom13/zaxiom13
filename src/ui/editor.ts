@@ -20,6 +20,8 @@ import {
 } from '@codemirror/autocomplete';
 import { searchKeymap, highlightSelectionMatches } from '@codemirror/search';
 import type { Interp } from '../q/eval';
+import { DOCS, DYNAMIC_DOCS } from '../content/reference-docs';
+import { TYPE_NAME, count, type QValue } from '../q/value';
 
 const KEYWORDS = new Set(
   `abs acos aj aj0 all and any asc asin asof atan attr avg avgs bin binr ceiling cols cor cos count cov cross csv cut
@@ -163,33 +165,119 @@ const theme = EditorView.theme(
   { dark: true }
 );
 
-export interface QEditorOpts {
-  parent: HTMLElement;
-  doc: string;
-  onRun: () => void;
-  onChange?: (doc: string) => void;
+import type { CodeSource, CodeOpts } from './code-source';
+
+export interface QEditorOpts extends CodeOpts {
   interp: Interp;
 }
 
+const COLOR_NAMES = [
+  'black','white','red','orange','yellow','green','mint','teal','cyan','blue','indigo',
+  'purple','pink','brown','gray','silver','gold','lime','navy','crimson','magenta','none',
+];
+const SHAPE_NAMES = [
+  'circle','ring','rect','box','square','line','tri','ngon','text','point','path','poly','arc','ellipse',
+];
+const PALETTE_NAMES = ['sunset','neon','ice','ember','forest','candy','mono','kdb','earth','vapor'];
+
+const SNIPPETS: { label: string; detail: string; body: string }[] = [
+  {
+    label: 'frame',
+    detail: 'animation: a pure function of time',
+    body: 'frame:{[t]\n  i:til 30;\n  ([] x:20+22*i; y:.p5.cy+90*sin[t+0.3*i]; r:8; fill:hsv[i%30;0.6;1]) }',
+  },
+  {
+    label: 'stepview',
+    detail: 'animation with state: init / step / view',
+    body: 'init:([] x:100?800f; y:100?600f)\nstep:{[s;t] update x:x+1 from s}\nview:{[s] circles[s`x;s`y;3] }',
+  },
+  {
+    label: 'timer',
+    detail: 'kdb+ style timer: \\t and .z.ts',
+    body: '\\t 250\n.z.ts:{[t]\n  / runs every 250ms\n  draw circles[.p5.cx;.p5.cy;40] }',
+  },
+  {
+    label: 'select',
+    detail: 'select ... by ... from ... where ...',
+    body: 'select sum v by k from t where v>0',
+  },
+  { label: 'tablelit', detail: 'a table literal', body: '([] a:1 2 3; b:`x`y`z)' },
+];
+
 export function createEditor(opts: QEditorOpts): EditorView {
+  const infoFor = (name: string, b: any): string => {
+    const doc = DOCS[name] ?? {};
+    const sig = doc.sig ?? b?.sig ?? '';
+    const text = doc.doc ?? b?.doc ?? '';
+    const ex = (doc.ex ?? b?.ex ?? []) as string[];
+    return [sig, text, ex.length ? 'e.g.  ' + ex[0] : ''].filter(Boolean).join('\n');
+  };
+
   const completions = (ctx: CompletionContext): CompletionResult | null => {
+    // `symbol completions: colours, shapes, palettes
+    const tick = ctx.matchBefore(/`[A-Za-z#0-9]*/);
+    if (tick) {
+      const options = [
+        ...COLOR_NAMES.map((c) => ({ label: '`' + c, type: 'constant', detail: 'colour' })),
+        ...SHAPE_NAMES.map((c) => ({ label: '`' + c, type: 'enum', detail: 'shape' })),
+        ...PALETTE_NAMES.map((c) => ({ label: '`' + c, type: 'variable', detail: 'palette' })),
+      ];
+      return { from: tick.from, options, validFor: /^`[A-Za-z#0-9]*$/ };
+    }
+
     const word = ctx.matchBefore(/[.A-Za-z][A-Za-z0-9_.]*/);
     if (!word || (word.from === word.to && !ctx.explicit)) return null;
-    const options: { label: string; type: string; detail?: string; info?: string }[] = [];
+
+    const options: {
+      label: string;
+      type: string;
+      detail?: string;
+      info?: string;
+      boost?: number;
+      apply?: string;
+    }[] = [];
+
     for (const [name, b] of opts.interp.builtins) {
       if (!/^[.A-Za-z]/.test(name)) continue;
+      const ns = name.startsWith('.');
       options.push({
         label: name,
         type: 'function',
-        detail: b.sig ?? '',
-        info: b.doc ?? '',
+        detail: (DOCS[name]?.sig ?? b.sig ?? '').split('·')[0].trim(),
+        info: infoFor(name, b),
+        boost: ns ? -10 : name.length < 4 ? 5 : 0,
       });
     }
-    for (const [name] of opts.interp.globals) {
+    for (const [name, v] of opts.interp.globals) {
       if (!/^[.A-Za-z]/.test(name)) continue;
       if (opts.interp.builtins.has(name)) continue;
-      options.push({ label: name, type: 'variable' });
+      options.push({
+        label: name,
+        type: v && v.t === 100 ? 'function' : v && (v.t === 98 || v.t === 99) ? 'class' : 'variable',
+        detail: v ? describeType(v) : '',
+        boost: 20,
+      });
     }
+    for (const [name, hook] of Object.entries(opts.interp.dynamicHooks)) {
+      if (!/^[.A-Za-z]/.test(name)) continue;
+      if (opts.interp.globals.has(name)) continue;
+      options.push({
+        label: name,
+        type: 'constant',
+        detail: DYNAMIC_DOCS[name] ?? 'live value',
+        boost: name.startsWith('.p5.') ? 8 : 0,
+      });
+    }
+    for (const s of SNIPPETS)
+      options.push({
+        label: s.label,
+        type: 'keyword',
+        detail: s.detail,
+        apply: s.body,
+        info: s.body,
+        boost: 10,
+      });
+
     return { from: word.from, options, validFor: /^[.A-Za-z][A-Za-z0-9_.]*$/ };
   };
 
@@ -238,6 +326,31 @@ export function createEditor(opts: QEditorOpts): EditorView {
   });
 
   return new EditorView({ state, parent: opts.parent });
+}
+
+function describeType(v: QValue): string {
+  if (v.t === 100) return 'lambda';
+  if (v.t === 98) return `table · ${count(v)} rows`;
+  if (v.t === 99) return `dict · ${count(v)} keys`;
+  if (v.t < 0) return `${TYPE_NAME[Math.abs(v.t)] ?? '?'} atom`;
+  return `${TYPE_NAME[Math.abs(v.t)] ?? 'list'} · ${count(v)}`;
+}
+
+/** the CodeMirror implementation of the CodeSource interface */
+export function createCodeMirrorSource(opts: QEditorOpts): CodeSource {
+  const view = createEditor(opts);
+  return {
+    get: () => view.state.doc.toString(),
+    set: (text) => setEditorText(view, text),
+    insert: (text) => insertAtCursor(view, text),
+    selectionOrLine() {
+      const sel = view.state.selection.main;
+      return sel.empty
+        ? view.state.doc.lineAt(sel.head).text
+        : view.state.sliceDoc(sel.from, sel.to);
+    },
+    focus: () => view.focus(),
+  };
 }
 
 export function setEditorText(view: EditorView, text: string) {

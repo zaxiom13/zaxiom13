@@ -7,6 +7,39 @@ export interface RefDoc {
   ex?: string[];
 }
 
+/** Values that only exist while a sketch runs (or that the clock provides). */
+export const DYNAMIC_DOCS: Record<string, string> = {
+  '.p5.t': 'seconds since Run',
+  '.p5.f': 'frame number',
+  '.p5.w': 'canvas width',
+  '.p5.h': 'canvas height',
+  '.p5.cx': 'canvas centre x',
+  '.p5.cy': 'canvas centre y',
+  '.p5.mx': 'pointer x',
+  '.p5.my': 'pointer y',
+  '.p5.down': 'is the pointer held down?',
+  '.p5.clicks': 'number of clicks so far',
+  '.p5.mouse': 'dictionary: x y down clicks',
+  '.p5.touch': 'table of active touches',
+  '.p5.keys': 'symbols of the keys held down',
+  '.p5.key': 'the last key pressed',
+  pi: '3.141592653589793',
+  tau: '2*pi',
+  '.z.p': 'UTC timestamp now',
+  '.z.P': 'local timestamp now',
+  '.z.t': 'UTC time now',
+  '.z.T': 'local time now',
+  '.z.d': 'UTC date today',
+  '.z.D': 'local date today',
+  '.z.z': 'UTC datetime now',
+  '.z.Z': 'local datetime now',
+  '.z.n': 'UTC time since midnight (timespan)',
+  '.z.N': 'local time since midnight (timespan)',
+  '.z.ts': 'assign a function here to run it on the \\t timer',
+  '.z.ti': 'the current timer interval, in milliseconds',
+  '.z.h': 'host', '.z.u': 'user', '.z.o': 'operating system', '.z.K': 'q version',
+};
+
 export const DOCS: Record<string, RefDoc> = {
   '+': { sig: 'x+y   +x', doc: 'Add, elementwise. Monadic `+` is **flip** (transpose).', ex: ['1 2 3+10', 'flip (1 2;3 4)'] },
   '-': { sig: 'x-y   -x', doc: 'Subtract, elementwise. Monadic negates.', ex: ['10-1 2 3', 'neg 1 2 3'] },

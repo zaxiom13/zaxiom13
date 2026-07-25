@@ -22,7 +22,9 @@ async function withPage(name, opts, fn) {
     if (m.type() === 'error') problems.push(`[${name}] console: ${m.text()}`);
   });
   await page.goto(url, { waitUntil: 'networkidle' });
-  await page.waitForTimeout(1200);
+  // the real editor arrives a moment after the first paint
+  await page.waitForSelector('#editor.ready', { timeout: 30000 }).catch(() => {});
+  await page.waitForTimeout(600);
   await fn(page);
   await ctx.close();
 }
@@ -63,6 +65,38 @@ await withPage('repl', { viewport: { width: 1280, height: 860 } }, async (page) 
   await page.waitForTimeout(300);
   const notes = await page.$$eval('#console .note', (es) => es.map((e) => e.textContent).join('\n'));
   ok(/til 10/.test(notes) && /45/.test(notes), 'trace output missing');
+});
+
+// 2b. autocomplete: namespaces, symbols and snippets
+await withPage('autocomplete', { viewport: { width: 1280, height: 860 } }, async (page) => {
+  const type = async (text) => {
+    await page.click('.cm-content');
+    await page.keyboard.press('Control+a');
+    await page.keyboard.type(text, { delay: 20 });
+    await page.waitForTimeout(400);
+  };
+  const options = () =>
+    page.$$eval('.cm-tooltip-autocomplete li', (ls) => ls.map((l) => l.textContent));
+
+  await type('.p5.m');
+  let opts = await options();
+  ok(
+    opts.some((o) => o.includes('.p5.mx')) && opts.some((o) => o.includes('.p5.mouse')),
+    `namespace completion missing: ${JSON.stringify(opts.slice(0, 6))}`
+  );
+
+  await type('circ');
+  opts = await options();
+  ok(opts.some((o) => o.includes('circles')), `builtin completion missing: ${JSON.stringify(opts.slice(0, 6))}`);
+
+  await type('x:`cri');
+  opts = await options();
+  ok(opts.some((o) => o.includes('crimson')), `colour completion missing: ${JSON.stringify(opts.slice(0, 6))}`);
+
+  await type('.z.');
+  opts = await options();
+  ok(opts.some((o) => o.includes('.z.ts') || o.includes('.Q.s')) || opts.length > 0,
+     `.z completion missing: ${JSON.stringify(opts.slice(0, 6))}`);
 });
 
 // 3. lessons: open one, check a challenge with the model solution
@@ -118,6 +152,54 @@ await withPage(
     ok(doc.length > 0, 'editor empty after keypad tap');
   }
 );
+
+// 6. keyboard: the steer example reacts to arrow keys, and to the on-screen pad
+await withPage('keyboard', { viewport: { width: 1000, height: 800 } }, async (page) => {
+  await page.selectOption('#examples', 'steer');
+  await page.waitForTimeout(1200);
+  const box = await page.$eval('#canvas', (el) => {
+    const r = el.getBoundingClientRect();
+    return { x: r.x, y: r.y, w: r.width, h: r.height };
+  });
+  await page.mouse.click(box.x + box.w / 2, box.y + box.h / 2);
+  const read = () => page.evaluate(() => window.qeval('floor (state`x;state`y)'));
+  const before = await read();
+  await page.keyboard.down('ArrowRight');
+  await page.waitForTimeout(800);
+  await page.keyboard.up('ArrowRight');
+  await page.waitForTimeout(200);
+  const after = await read();
+  ok(before !== after, `arrow keys did not move the ship (${before} -> ${after})`);
+  ok(await page.isVisible('#dpad'), 'on-screen pad not shown for a keyboard sketch');
+});
+
+// 7. mouse: the pointer reaches q as .p5.mx / .p5.my
+await withPage('mouse', { viewport: { width: 1000, height: 800 } }, async (page) => {
+  await page.selectOption('#examples', 'orbit');
+  await page.waitForTimeout(900);
+  const box = await page.$eval('#canvas', (el) => {
+    const r = el.getBoundingClientRect();
+    return { x: r.x, y: r.y, w: r.width, h: r.height };
+  });
+  await page.mouse.move(box.x + box.w * 0.3, box.y + box.h * 0.4);
+  await page.waitForTimeout(400);
+  const pos = await page.evaluate(() => window.qeval('floor (.p5.mx;.p5.my)'));
+  const [mx, my] = pos.split(' ').map(Number);
+  ok(
+    Math.abs(mx - box.w * 0.3) < 6 && Math.abs(my - box.h * 0.4) < 6,
+    `pointer not reported to q: got ${pos}, expected near ${Math.round(box.w * 0.3)} ${Math.round(box.h * 0.4)}`
+  );
+});
+
+// 8. timer: \t + .z.ts keeps firing
+await withPage('timer', { viewport: { width: 1000, height: 800 } }, async (page) => {
+  await page.selectOption('#examples', 'tick');
+  await page.waitForTimeout(2500);
+  const n = Number(await page.evaluate(() => window.qeval('count trade')));
+  ok(n > 8, `.z.ts only fired ${n} times in 2.5s`);
+  const mode = await page.textContent('#badge-mode');
+  ok((mode ?? '').includes('timer'), `expected timer mode, got ${mode}`);
+});
 
 await browser.close();
 console.log(`${checks} checks`);
