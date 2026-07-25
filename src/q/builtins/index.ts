@@ -1088,7 +1088,10 @@ export function installBuiltins(ip: Interp) {
 
     const by = byGroups();
     const spec = selSpecs();
-    const wantTable = sel === undefined || isDict(sel) || (sel.t === 0 && count(sel) === 0);
+    // b of () (rather than 0b) asks for exec-style results
+    const execMode = b !== undefined && b.t === 0 && count(b) === 0;
+    const wantTable =
+      !execMode && (sel === undefined || isDict(sel) || (sel.t === 0 && count(sel) === 0));
 
     if (by) {
       const scope = scopeOf(tbl, rows);
@@ -1135,9 +1138,20 @@ export function installBuiltins(ip: Interp) {
     }
 
     const scope = scopeOf(tbl, rows);
-    if (!spec) return selectTableRows(tbl, rows);
+    if (!spec) {
+      if (execMode) {
+        // exec with no columns: the last record, as a dictionary
+        const last = rows.length ? rows[rows.length - 1] : -1;
+        return dict(
+          symvec(tbl.c.slice()),
+          fromItems(tbl.v.map((c) => (last < 0 ? nullLike(c) : at(c, last))))
+        );
+      }
+      return selectTableRows(tbl, rows);
+    }
     if (!wantTable) {
       const vals = spec.trees.map((t2) => evalTree(ip2, t2, scope));
+      if (isDict(sel)) return dict(symvec(spec.names), fromItems(vals));
       return vals.length === 1 ? vals[0] : fromItems(vals);
     }
     let vals = spec.trees.map((t2) => evalTree(ip2, t2, scope));

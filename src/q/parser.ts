@@ -465,11 +465,15 @@ class Parser {
       }
     }
     const body: Node[] = [];
+    let trailingSemi = false;
     for (;;) {
       this.skipNl();
       if (this.at('rbrace')) break;
       if (this.at('semi')) {
         this.next();
+        this.skipNl();
+        // {x*2;} returns the generic null
+        if (this.at('rbrace')) trailingSemi = true;
         continue;
       }
       if (this.at('eof')) throw new QError('parse', 'Unclosed { in lambda.');
@@ -478,11 +482,14 @@ class Parser {
       this.skipNl();
       if (this.at('semi')) {
         this.next();
+        this.skipNl();
+        if (this.at('rbrace')) trailingSemi = true;
         continue;
       }
       if (this.p === before)
         throw new QError('parse', `Unexpected ${JSON.stringify(this.peek().s)} in lambda body.`);
     }
+    if (trailingSemi) body.push({ k: 'nil', i: this.peek().i });
     const close = this.expect('rbrace');
     this.braceDepth--;
     if (!explicit) {
