@@ -5,7 +5,7 @@
   "main": "index.js",
   "scripts": {
     "dev": "vite",
-    "build": "vite build",
+    "build": "vite build && node tools/verify-dist.mjs dist",
     "preview": "vite preview",
     "test": "vitest run",
     "test:watch": "vitest",
@@ -16,7 +16,9 @@
     "shots": "node tools/shot.mjs",
     "typecheck": "tsc --noEmit",
     "e2e": "node tools/e2e.mjs",
-    "loadperf": "node tools/loadperf.mjs"
+    "loadperf": "node tools/loadperf.mjs",
+    "build:offline": "vite build --config vite.offline.config.ts && node tools/verify-offline.mjs",
+    "verify:url": "node tools/verify-url.mjs"
   },
   "repository": {
     "type": "git",
