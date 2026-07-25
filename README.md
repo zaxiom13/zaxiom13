@@ -32,6 +32,10 @@ frame:{[t]
   tiny synth so a table can be a musical score.
 - **The `.z` and `.Q` namespaces** — the clock, `\t`/`.z.ts` timers (kdb+'s own way of
   scheduling work), and the `.Q` utility belt.
+- **A complex-number namespace `.c`** — q has no complex type, so one is a `` `re`im ``
+  dictionary that works identically for a single number and a million of them: arithmetic,
+  `exp`/`log`/`sqrt`/`pow`, roots of unity, `.c.grid` over the plane, escape-time iteration
+  for Mandelbrot and Julia sets, and an FFT.
 - **A course** (`src/content/lessons.ts`) — eighteen lessons from atoms to candlesticks,
   each with runnable snippets and a checked challenge.
 - **A gallery** (`src/content/examples.ts`) — candlesticks, Conway's life, flow fields,
@@ -99,6 +103,18 @@ plot (walk; 20 mavg walk)     / two series, one shared scale
 | `init`, `step:{[s;t] … }`, `view:{[s] … }` | the animation as a fold over state |
 | `\t 100` and `.z.ts:{[now] … }` | kdb+'s timer — periodic work, exactly as on a server |
 | `draw:{[t] … }` calling `.p5.circle` etc. | classic immediate mode, if you insist |
+
+### Complex numbers
+
+```q
+.c.str .c.mul[.c.z[1;2];.c.z[3;-1]]     / "5+5i"
+.c.str .c.exp .c.mul[.c.i;pi]           / "-1+1.224647e-16i"
+.c.escape[0;.c.grid[300;200;.c.z[-2.2;-1.2];.c.z[0.8;1.2]];60]   / a Mandelbrot, in one call
+```
+
+Everything is vectorised, reals are accepted wherever a complex is, and `.c.tbl` turns a
+complex vector into a table with `re` and `im` columns so `select` and the shape builders
+work on it.
 
 ### Input
 

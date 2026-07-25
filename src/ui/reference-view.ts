@@ -74,6 +74,14 @@ export function renderReference(host: HTMLElement, getIp: () => Interp, opts: Re
         ['.Q.addmonths[d;n]', 'date arithmetic in months'],
         ['.Q.id x  .Q.ty x  .Q.qt x', 'sanitise names · type char · is-a-table'],
         ['.Q.fu[f;x]', 'apply f to the distinct items only'],
+        ['.c.z[re;im] · .c.i', 'complex numbers: a `re`im dictionary'],
+        ['.c.add .c.sub .c.mul .c.div', 'complex arithmetic (reals accepted on either side)'],
+        ['.c.abs .c.arg .c.conj .c.inv', 'modulus · argument · conjugate · reciprocal'],
+        ['.c.exp .c.log .c.sqrt .c.pow', 'and .c.sin .c.cos .c.rot .c.polar .c.expi'],
+        ['.c.roots n · .c.grid[..]', 'roots of unity · a rectangle of the plane'],
+        ['.c.escape[z0;c;n]', 'escape-time iteration: Mandelbrot and Julia'],
+        ['.c.tbl .c.str .c.show', 'as a table · as "3+4i" · print it'],
+        ['.c.fft .c.ifft', 'fast Fourier transform'],
         ['\\t 100 · \\t expr', 'set the timer · time an expression'],
         ['\\P 3 · \\S 42 · \\c 40', 'print precision · random seed · console rows'],
       ]
@@ -113,7 +121,7 @@ export function renderReference(host: HTMLElement, getIp: () => Interp, opts: Re
       Operators: [],
       Keywords: [],
       'Canvas, input & sound': [],
-      'Namespaces (.z .Q)': [],
+      'Namespaces (.z .Q .c)': [],
     };
     for (const b of all) {
       const doc = DOCS[b.name];
@@ -121,8 +129,8 @@ export function renderReference(host: HTMLElement, getIp: () => Interp, opts: Re
       if (ql && !hay.includes(ql)) continue;
       const group = !/^[.a-z]/i.test(b.name)
         ? 'Operators'
-        : b.name.startsWith('.z.') || b.name.startsWith('.Q.')
-        ? 'Namespaces (.z .Q)'
+        : b.name.startsWith('.z.') || b.name.startsWith('.Q.') || b.name.startsWith('.c.')
+        ? 'Namespaces (.z .Q .c)'
         : SKETCH_NAMES.has(b.name) || b.name.startsWith('.p5.')
         ? 'Canvas, input & sound'
         : 'Keywords';

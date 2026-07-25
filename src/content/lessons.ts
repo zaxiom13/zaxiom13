@@ -32,6 +32,7 @@ const c = (code: string): Block => ({ kind: 'code', code });
 const bad = (code: string): Block => ({ kind: 'code', code, err: true });
 const s = (code: string): Block => ({ kind: 'sketch', code });
 const n = (text: string): Block => ({ kind: 'note', text });
+const h3 = (text: string): Block => ({ kind: 'text', text: '**' + text + '**' });
 
 export const LESSONS: Lesson[] = [
   {
@@ -450,6 +451,65 @@ export const LESSONS: Lesson[] = [
       starter: '',
       check: '500 = .z.ti',
       solution: '\\t 500',
+    },
+  },
+  {
+    id: 'complex',
+    title: 'Complex numbers',
+    blurb: 'q has no complex type, so we built one out of a dictionary.',
+    blocks: [
+      t(
+        'The `.c` namespace represents a complex number as a dictionary of `re` and `im`. Because those two values can be atoms **or** vectors, one number and a million of them look exactly the same — just like the rest of q.'
+      ),
+      c('.c.z[3;4]'),
+      c('.c.str .c.z[3;-4]'),
+      c('.c.i'),
+      t('Reals are accepted anywhere a complex is, and everything is vectorised:'),
+      c('.c.str .c.add[2;.c.i]'),
+      c('.c.str .c.z[til 4;1]'),
+      t(
+        '`+` and `-` happen to work on the dictionaries directly, but multiplication does not — that is the whole point of the namespace:'
+      ),
+      c('.c.str .c.mul[.c.z[1;2];.c.z[3;-1]]'),
+      c('.c.str .c.mul[.c.i;.c.i]'),
+      c('.c.abs .c.z[3;4]'),
+      c('.c.arg .c.i'),
+      t('Euler was right:'),
+      c('.c.str .c.exp .c.mul[.c.i;pi]'),
+      t(
+        'The roots of unity are a regular polygon for free, and `.c.tbl` turns any complex vector into a table you can draw:'
+      ),
+      c('.c.tbl .c.roots 5'),
+      s(
+        'bg `#07090d\npts:.c.roots 9\ns:0.4*.p5.h\ncircles[.p5.cx+s*.c.re pts; .p5.cy+s*.c.im pts; 12; `gold],\n  poly[.p5.cx+s*.c.re pts; .p5.cy+s*.c.im pts; `#1f6feb]'
+      ),
+      t(
+        'Multiplying by a unit complex number is a rotation, which makes spinning things trivial:'
+      ),
+      s(
+        'bg `#07090d\npts:.c.roots 6\nframe:{[t]\n  w:.c.rot[pts;t];\n  s:0.35*.p5.h;\n  poly[.p5.cx+s*.c.re w; .p5.cy+s*.c.im w; `#b892ff] }'
+      ),
+      h3('Fractals'),
+      t(
+        '`.c.grid` covers a rectangle of the plane with points, and `.c.escape` iterates `z:=z*z+c` over all of them at once, returning how many steps each point survived. Mandelbrot when `z0` is 0, Julia when `c` is fixed.'
+      ),
+      c('.c.escape[0;.c.grid[8;3;.c.z[-2;-1];.c.z[1;1]];50]'),
+      t('That is exactly this loop, done in one pass:'),
+      c('step:{[c;z] .c.add[.c.mul[z;z];c]}\n.c.str 6 step[.c.z[-0.4;0.6]]/ .c.z[0;0]'),
+      t('So a Mandelbrot set is a grid, an escape count, and a colour:'),
+      s(
+        'bg `black\nW:110; H:80\nzs:.c.grid[W;H;.c.z[-2.2;-1.2];.c.z[0.8;1.2]]\nxy:grid[W;H]\ncw:.p5.w%W; ch:.p5.h%H\nn:.c.escape[0;zs;60]\nsel:update n:n, v:(n%60) xexp 0.4 from xy\nselect shape:`rect, x:cw*(0.5+x), y:ch*(0.5+y), w:cw+1, h:ch+1,\n       fill:?[n=60;`black;hsv[0.6+0.4*v;0.8;0.15+0.85*v]] from sel'
+      ),
+      n(
+        'There is also `.c.fft` and `.c.ifft` if you want a spectrum, `.c.sqrt` `.c.log` `.c.pow` `.c.sin` `.c.cos` for the usual functions, and `.c.conj` `.c.inv` `.c.polar` `.c.expi` `.c.sum` `.c.avg`.'
+      ),
+    ],
+    challenge: {
+      prompt: 'Set `z` to the product of 1+2i and 3-i.',
+      starter: 'z:',
+      check: 'z ~ .c.z[5;5]',
+      solution: 'z:.c.mul[.c.z[1;2];.c.z[3;-1]]',
+      hint: '.c.mul takes two complex numbers; build them with .c.z[re;im].',
     },
   },
   {

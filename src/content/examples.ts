@@ -130,6 +130,41 @@ px:100f
   draw chart,hud }`,
   },
   {
+    id: 'julia',
+    title: 'Julia set',
+    blurb: 'The .c namespace: a whole complex plane, iterated every frame.',
+    tags: ['complex', 'animation'],
+    code: `/ z := z*z + c, for every pixel, sixty times a second.
+bg \`black
+W:130; H:95
+zs:.c.grid[W;H;.c.z[-1.7;-1.2];.c.z[1.7;1.2]]   / the complex plane
+xy:grid[W;H]                                    / where to draw each one
+cw:.p5.w%W; ch:.p5.h%H
+
+frame:{[t]
+  c:.c.polar[0.7885;0.25*t];                    / c walks round a circle
+  n:.c.escape[zs;c;48];                         / iterations survived
+  s:update n:n, v:(n%48) xexp 0.45 from xy;     / gamma for contrast
+  select shape:\`rect, x:cw*(0.5+x), y:ch*(0.5+y), w:cw+1, h:ch+1,
+         fill:?[n=48;\`#05060a;hsv[0.55+0.45*v;0.85;0.15+0.85*v]] from s }`,
+  },
+  {
+    id: 'conformal',
+    title: 'Conformal map',
+    blurb: 'Push a grid of complex numbers through z², 1/z and friends.',
+    tags: ['complex', 'animation'],
+    code: `/ A conformal map moves the plane around while keeping angles.
+bg \`#06080c
+zs:.c.grid[70;70;.c.z[-1.6;-1.6];.c.z[1.6;1.6]]
+hue:0.5+0.09*.c.arg zs                          / colour by where it started
+
+frame:{[t]
+  w:.c.add[.c.mul[zs;zs];.c.polar[0.9;0.4*t]];  / z^2 + a rotating constant
+  w:.c.add[w;.c.mul[.c.inv .c.add[zs;.c.z[1.2;0]];0.35]];
+  s:0.2*.p5.h;
+  points[.p5.cx+s*.c.re w; .p5.cy+s*.c.im w; hsv[hue;0.7;1]] }`,
+  },
+  {
     id: 'grid',
     title: 'Grid of dots',
     blurb: 'til, cross and update: build a lattice, colour it by position.',

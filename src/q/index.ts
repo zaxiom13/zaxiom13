@@ -3,6 +3,7 @@
 import { Interp } from './eval';
 import { installBuiltins } from './builtins/index';
 import { installNamespaces } from './builtins/namespaces';
+import { installComplex } from './builtins/complex';
 import { display, displayLines, compact, DEFAULT_OPTS, FmtOpts } from './format';
 import { QValue, QError, UNIT } from './value';
 
@@ -16,6 +17,7 @@ export function createInterp(opts?: { out?: (s: string) => void }): Interp {
   const ip = new Interp();
   installBuiltins(ip);
   installNamespaces(ip);
+  installComplex(ip);
   if (opts?.out) ip.out = opts.out;
   return ip;
 }

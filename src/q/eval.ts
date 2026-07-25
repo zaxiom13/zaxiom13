@@ -322,7 +322,12 @@ export class Interp {
 
   evalCall(n: Node & { k: 'call' }, f: Frame): QValue {
     const fn = this.evalNode(n.f, f);
-    const args = n.args.map((a) => (a === null ? null : this.evalNode(a, f)));
+    // q evaluates arguments right to left
+    const args: (QValue | null)[] = new Array(n.args.length);
+    for (let i = n.args.length - 1; i >= 0; i--) {
+      const a = n.args[i];
+      args[i] = a === null ? null : this.evalNode(a, f);
+    }
     if (args.length === 0) {
       if (isFunc(fn)) return this.apply(fn, []);
       return fn;
