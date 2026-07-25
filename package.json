@@ -1,0 +1,54 @@
+{
+  "name": "q-sketch",
+  "version": "0.1.0",
+  "description": "A client-side q/kdb+ interpreter wired to p5.js: learn q through creative coding.",
+  "main": "index.js",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "preview": "vite preview",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "parity": "tsx tools/parity.mjs",
+    "parity:report": "tsx tools/parity.mjs --group --fail 40",
+    "corpus": "node tools/scrape-corpus.mjs /tmp/kxdocs > parity/corpus.json && node tools/make-suite.mjs",
+    "q": "tsx tools/q.mjs",
+    "shots": "node tools/shot.mjs",
+    "typecheck": "tsc --noEmit",
+    "e2e": "node tools/e2e.mjs"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/zaxiom13/zaxiom13.git"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "bugs": {
+    "url": "https://github.com/zaxiom13/zaxiom13/issues"
+  },
+  "homepage": "https://github.com/zaxiom13/zaxiom13#readme",
+  "devDependencies": {
+    "@types/node": "^26.1.1",
+    "playwright": "^1.62.0",
+    "tsx": "^4.23.1",
+    "typescript": "^7.0.2",
+    "vite": "^8.1.5",
+    "vitest": "^4.1.10"
+  },
+  "dependencies": {
+    "@codemirror/autocomplete": "^6.20.3",
+    "@codemirror/commands": "^6.10.4",
+    "@codemirror/lang-markdown": "^6.5.1",
+    "@codemirror/language": "^6.12.4",
+    "@codemirror/search": "^6.7.1",
+    "@codemirror/state": "^6.7.1",
+    "@codemirror/view": "^6.43.6",
+    "@lezer/highlight": "^1.2.3",
+    "codemirror": "^6.0.2",
+    "lz-string": "^1.5.0",
+    "p5": "^2.3.1"
+  },
+  "private": true,
+  "type": "module"
+}
