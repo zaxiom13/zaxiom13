@@ -139,3 +139,40 @@ describe('.Q namespace', () => {
   ];
   for (const [src, want] of cases) it(src, () => expect(run(src)).toBe(want));
 });
+
+describe('the drawing model', () => {
+  it('draw returns what it was given, so frame can thread it', () => {
+    const { ip, rt } = headless();
+    const r = q(ip, 'scene:draw circles[10;10;5]');
+    expect(r.ok).toBe(true);
+    expect(q(ip, 'count scene').output).toBe('1');
+    expect(rt.lastDrawn).toBeTruthy();
+  });
+
+  it('frame with one parameter gets the time', () => {
+    const { ip, rt } = headless();
+    q(ip, 'frame:{[t] draw circles[t;10;5]}');
+    ip.apply(ip.globals.get('frame')!, [{ t: -9, v: 42 } as any]);
+    expect(rt.lastDrawn).toBeTruthy();
+    expect(ip.rankOf(ip.globals.get('frame')!)).toBe(1);
+  });
+
+  it('frame with two parameters is a fold over time', () => {
+    const { ip } = headless();
+    q(ip, 'init:0\nframe:{[s;t] draw circles[10;10;5]; s+1}');
+    const f = ip.globals.get('frame')!;
+    expect(ip.rankOf(f)).toBe(2);
+    let s = ip.globals.get('init')!;
+    for (let i = 0; i < 3; i++) s = ip.apply(f, [s, { t: -9, v: 0 } as any]);
+    expect((s as any).v).toBe(3);
+  });
+
+  it('still runs the old step/view pair, with a note', () => {
+    const notes: string[] = [];
+    const { ip, rt } = headless();
+    rt.events.onNote = (m) => notes.push(m);
+    q(ip, 'init:1\nstep:{[s;t] s+1}\nview:{[s] circles[s;10;5]}');
+    rt.start();
+    expect(notes.join(' ')).toMatch(/step and view are the old API/);
+  });
+});

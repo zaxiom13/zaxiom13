@@ -41,10 +41,12 @@ import { installShapes } from './shapes';
 import { PALETTES } from './palette';
 import { AudioEngine } from './audio';
 
-export type SketchMode = 'idle' | 'static' | 'frame' | 'state' | 'imperative' | 'timer';
+export type SketchMode = 'idle' | 'static' | 'frame' | 'timer' | 'frame+timer' | 'legacy';
 
 export interface RuntimeEvents {
   onError?: (msg: string, hint?: string) => void;
+  /** advice that is not a failure (deprecations, warnings) */
+  onNote?: (msg: string) => void;
   onStatus?: (s: { mode: SketchMode; fps: number; shapes: number }) => void;
 }
 
@@ -63,7 +65,8 @@ export class SketchRuntime {
   fps = 0;
   audio = new AudioEngine();
   bgColor = '#0e1116';
-  private pendingStatic: QValue | null = null;
+  /** the most recent scene handed to draw (also used to repaint on resize) */
+  lastDrawn: QValue | null = null;
   private errorShown = false;
   /** p5 creates the canvas asynchronously; nothing may paint before that */
   private canvasReady = false;
@@ -205,33 +208,36 @@ export class SketchRuntime {
     this.mount();
     const g = this.ip.globals;
     this.errorShown = false;
-    // only *user-defined* lambdas count, otherwise the builtin `draw` would
-    // look like an imperative sketch
     const lam = (nm: string) => {
       const v = g.get(nm);
       return v && v.t === 100 ? v : null;
     };
-    const hasFrame = !!lam('frame');
-    const hasStep = !!lam('step');
-    const hasDraw = !!lam('draw');
-    const hasTimer = !!lam('.z.ts') && this.timerMs > 0;
-    this.lastTimer = performance.now();
-    if (hasTimer && !hasStep && !hasFrame && !hasDraw) {
-      this.mode = 'timer';
-    } else if (hasStep) {
-      this.mode = 'state';
-      const init = g.get('init');
-      this.state = init === undefined ? UNIT : isFunc(init) ? this.ip.apply(init, [UNIT]) : init;
-      this.ip.globals.set('state', this.state); // visible from the q) prompt
-    } else if (hasFrame) this.mode = 'frame';
-    else if (hasDraw) this.mode = 'imperative';
-    else this.mode = this.pendingStatic ? 'static' : 'idle';
+    const frame = lam('frame');
+    const timer = lam('.z.ts') && this.timerMs > 0;
+    const legacy = !frame && !!lam('step');
+
+    // one seed for the value threaded through frame
+    const init = g.get('init');
+    this.state =
+      init === undefined ? UNIT : isFunc(init) ? this.ip.apply(init, [UNIT]) : init;
+    this.ip.globals.set('state', this.state);
+
+    this.mode = frame && timer ? 'frame+timer' : frame ? 'frame' : timer ? 'timer' : legacy ? 'legacy' : this.lastDrawn ? 'static' : 'idle';
+
+    if (lam('draw'))
+      this.events.onNote?.(
+        'draw is the verb that puts a scene on the canvas, so defining draw as a function shadows it — rename yours to frame:{[t] … } and call draw inside it.'
+      );
+    if (legacy)
+      this.events.onNote?.(
+        'step and view are the old API: frame:{[s;t] … } now does both — it is handed what it returned last time, and you call draw yourself.'
+      );
 
     this.frameNo = 0;
     this.startTime = performance.now();
-    if (this.mode === 'idle' && hasTimer) this.mode = 'timer';
-    if (this.mode === 'static' && hasTimer) this.mode = 'timer';
-    if (this.mode === 'static' || this.mode === 'idle') {
+    this.lastTimer = performance.now();
+    const live = this.mode !== 'static' && this.mode !== 'idle';
+    if (!live) {
       this.running = false;
       this.p?.noLoop();
       this.redrawStatic();
@@ -280,7 +286,7 @@ export class SketchRuntime {
     const cols = isTable(v) ? (v as QTable).c : ((v as any).k?.v as string[]) ?? [];
     if (!Array.isArray(cols)) return false;
     if (!cols.some((c) => ['x', 'y', 'shape', 'pts', 'r'].includes(c))) return false;
-    this.pendingStatic = v;
+    this.lastDrawn = v;
     this.mode = 'static';
     this.mount();
     this.redrawStatic();
@@ -288,13 +294,16 @@ export class SketchRuntime {
   }
 
   clear() {
-    this.pendingStatic = null;
+    this.lastDrawn = null;
     this.mode = 'idle';
     this.running = false;
     this.lastShapes = 0;
     this.state = UNIT;
     this.timerMs = 0;
     this.clicks = 0;
+    this.tickScene = null;
+    this.lastScene = UNIT;
+    this.drewThisTick = false;
     if (this.p) {
       this.p.noLoop();
       this.p.background(this.bgColor);
@@ -306,6 +315,10 @@ export class SketchRuntime {
   }
 
   timerFired = false;
+  /** everything drawn during the current tick, joined (also q's .p5.scene) */
+  private tickScene: QValue | null = null;
+  private drewThisTick = false;
+  private lastScene: QValue = UNIT;
 
   private redrawStatic() {
     if (!this.p || !this.canvasReady) {
@@ -313,8 +326,8 @@ export class SketchRuntime {
       return;
     }
     this.p.background(this.bgColor);
-    if (this.pendingStatic) {
-      this.lastShapes = drawScene(this.p, this.pendingStatic, {
+    if (this.lastDrawn) {
+      this.lastShapes = drawScene(this.p, this.lastDrawn, {
         defaultFill: '#7dd3fc',
         defaultStroke: '#e5e7eb',
       });
@@ -331,40 +344,54 @@ export class SketchRuntime {
     this.fps = this.fps * 0.9 + (p.frameRate() ?? 0) * 0.1;
     this.pushInputs(t);
     this.ip.steps = 0; // the loop guard is per frame, not per session
+    const g = this.ip.globals;
     try {
-      const g = this.ip.globals;
-      // .z.ts fires on its own clock, whatever the drawing mode is
+      // a fresh canvas, then whatever the sketch chooses to draw on it
+      p.background(this.bgColor);
+      this.tickScene = null;
+      this.drewThisTick = false;
+      this.shapesThisTick = 0;
+
+      // q's own clock, at its own rate
       const ts = g.get('.z.ts');
       if (ts && ts.t === 100 && this.timerMs > 0) {
-        while (now - this.lastTimer >= this.timerMs) {
+        let guard = 0;
+        while (now - this.lastTimer >= this.timerMs && guard++ < 8) {
           this.lastTimer += this.timerMs;
-          if (now - this.lastTimer > 5 * this.timerMs) this.lastTimer = now; // don't spiral
           this.timerFired = true;
           this.ip.apply(ts, [(this.ip as any).nowTimestamp?.() ?? float(t)]);
         }
+        if (now - this.lastTimer > 5 * this.timerMs) this.lastTimer = now;
       }
-      p.background(this.bgColor);
-      if (this.mode === 'timer') {
-        if (this.pendingStatic)
-          this.lastShapes = drawScene(p, this.pendingStatic, {
-            defaultFill: '#7dd3fc',
-            defaultStroke: '#e5e7eb',
-          });
-      } else if (this.mode === 'frame') {
-        const f = g.get('frame')!;
-        const scene = this.ip.apply(f, [float(t)]);
-        this.lastShapes = drawScene(p, scene, { defaultFill: '#7dd3fc', defaultStroke: '#e5e7eb' });
-      } else if (this.mode === 'state') {
+
+      const frame = g.get('frame');
+      if (frame && frame.t === 100) {
+        // one parameter gets the time; two also get what you returned last tick
+        const rank = this.ip.rankOf(frame);
+        const out =
+          rank >= 2
+            ? this.ip.apply(frame, [this.state, float(t)])
+            : this.ip.apply(frame, [float(t)]);
+        if (rank >= 2) {
+          this.state = out;
+          g.set('state', out);
+        }
+        // returning a scene without calling draw still draws it
+        if (!this.drewThisTick && out && (isTable(out) || isDict(out))) this.paint(out);
+      } else if (this.mode === 'legacy') {
         const step = g.get('step')!;
         this.state = this.ip.apply(step, [this.state, float(t)]);
         g.set('state', this.state);
         const view = g.get('view');
         const scene = view && isFunc(view) ? this.ip.apply(view, [this.state]) : this.state;
-        this.lastShapes = drawScene(p, scene, { defaultFill: '#7dd3fc', defaultStroke: '#e5e7eb' });
-      } else if (this.mode === 'imperative') {
-        const d = g.get('draw')!;
-        this.ip.apply(d, [float(t)]);
+        this.paint(scene);
       }
+
+      // nothing new this tick (a pure .z.ts sketch between ticks): keep the picture
+      if (!this.drewThisTick && this.lastDrawn) this.paint(this.lastDrawn);
+      this.lastShapes = this.shapesThisTick;
+      this.lastScene = this.tickScene ?? UNIT;
+      g.set('.p5.scene', this.lastScene);
     } catch (e: any) {
       this.running = false;
       p.noLoop();
@@ -375,6 +402,23 @@ export class SketchRuntime {
       }
     }
     if (this.frameNo % 15 === 0) this.status();
+  }
+
+  private shapesThisTick = 0;
+
+  /** render a scene now, and remember it for .p5.scene */
+  private paint(scene: QValue) {
+    if (!this.p || !this.canvasReady) return;
+    this.shapesThisTick += drawScene(this.p, scene, {
+      defaultFill: '#7dd3fc',
+      defaultStroke: '#e5e7eb',
+    });
+    this.drewThisTick = true;
+    this.lastDrawn = scene;
+    this.tickScene =
+      this.tickScene === null
+        ? scene
+        : ((this.ip as any).joinValues?.(this.tickScene, scene) ?? scene);
   }
 
   private pushInputs(t: number) {
@@ -483,20 +527,19 @@ export class SketchRuntime {
       'draw',
       [1],
       (_ip, [scene]) => {
-        self.pendingStatic = scene;
-        if (!self.running) {
+        if (self.running) {
+          // inside a tick: paint onto the frame already in progress
+          self.paint(scene);
+        } else {
+          self.lastDrawn = scene;
+          self.drewThisTick = true;
           self.mode = 'static';
           self.mount();
           self.redrawStatic();
-        } else if (self.p) {
-          self.lastShapes = drawScene(self.p, scene, {
-            defaultFill: '#7dd3fc',
-            defaultStroke: '#e5e7eb',
-          });
         }
-        return UNIT;
+        return scene;
       },
-      'Render a scene table on the canvas.',
+      'Put a scene on the canvas. The only way to draw anything, and it returns what you gave it.',
       'draw scene',
       ['draw ([] x:100 200; y:100 100; r:40 25; fill:`gold`crimson)']
     );
@@ -834,6 +877,7 @@ export class SketchRuntime {
       '.p5.my': () => float(this.pointerSeen ? this.p?.mouseY ?? 0 : (this.p?.height ?? 600) / 2),
       '.p5.down': () => bool(!!(this.p as any)?.mouseIsPressed),
       '.p5.touch': () => table(['x', 'y', 'id'], [floatvec([]), floatvec([]), longvec([])]),
+      '.p5.scene': () => this.lastScene,
       '.p5.keys': () => symvec([...this.keys].sort()),
       '.p5.key': () => sym(this.lastKey),
       '.p5.clicks': () => long(this.clicks),

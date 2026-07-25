@@ -227,6 +227,6 @@ const CHEATS: [string, string][] = [
   ['?[c;a;b]', 'elementwise if'],
   ['0N!x', 'print and return x'],
   ['draw scene', 'render a scene table'],
-  ['frame:{[t] .. }', 'animate: return a scene'],
-  ['init / step / view', 'animate with state'],
+  ['frame:{[t] .. }', 'animate: draw every ~16ms'],
+  ['frame:{[s;t] .. }', '...and get back what you returned'],
 ];

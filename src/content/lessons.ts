@@ -248,7 +248,7 @@ export const LESSONS: Lesson[] = [
     blurb: 'A scene is a table. Every row is a shape.',
     blocks: [
       t(
-        'Here is the whole idea of this playground: **a drawing is a table**. One row per shape, one column per property. `draw` renders it.'
+        'Here is the whole idea of this playground: **a drawing is a table**. One row per shape, one column per property. `draw` puts it on the canvas — and `draw` is the only thing that ever does.'
       ),
       s(
         'bg `#0b0e13\ndraw ([] shape:`circle`rect`tri;\n       x:120 260 400;\n       y:150 150 150;\n       r:50 40 45;\n       fill:`crimson`gold`mint)'
@@ -314,10 +314,14 @@ export const LESSONS: Lesson[] = [
     blurb: 'A frame is a pure function of time.',
     blocks: [
       t(
-        'Define a function called `frame` that takes the time in seconds and returns a scene table. The playground calls it about sixty times a second. No mutable state, no draw loop — just a function of `t`.'
+        'Everything on the canvas gets there through `draw`. To animate, put your `draw` calls in a function named **`frame`**: the playground calls it about sixty times a second and hands it the time in seconds.'
       ),
       s(
-        'bg `#07090d\nframe:{[t]\n  i:til 30;\n  ([] x:20+22*i; y:.p5.cy+90*sin[t+0.3*i]; r:8; fill:hsv[(i%30)+0.1*t;0.6;1]) }'
+        'bg `#07090d\nframe:{[t]\n  i:til 30;\n  draw circles[20+22*i; .p5.cy+90*sin[t+0.3*i]; 8; hsv[(i%30)+0.1*t;0.6;1]] }'
+      ),
+      t('You can call `draw` as many times as you like — the canvas is wiped once per frame, and everything you draw lands on it:'),
+      s(
+        'bg `#07090d\nframe:{[t]\n  draw circles[.p5.cx; .p5.cy; 120+30*sin t; `#12203a];\n  draw circles[.p5.cx+100*cos t; .p5.cy+100*sin t; 22; `gold];\n  draw texts[.p5.cx; 30; "two draws, one frame"; 13] }'
       ),
       t('Handy globals while a sketch runs:'),
       c('.p5.w'),
@@ -326,7 +330,7 @@ export const LESSONS: Lesson[] = [
       ),
       t('Everything is still a table, so an animation can be filtered and joined like data:'),
       s(
-        'bg `#07090d\nframe:{[t]\n  i:til 120;\n  s:([] x:i*.p5.w%120; y:.p5.cy+120*sin[(0.1*i)+2*t]; r:3; fill:`#5ec2ff);\n  hi:select from s where y<.p5.cy;\n  s,update r:7, fill:`#ff7ab2 from hi }'
+        'bg `#07090d\nframe:{[t]\n  i:til 120;\n  s:([] x:i*.p5.w%120; y:.p5.cy+120*sin[(0.1*i)+2*t]; r:3; fill:`#5ec2ff);\n  hi:select from s where y<.p5.cy;\n  draw s,update r:7, fill:`#ff7ab2 from hi }'
       ),
     ],
     challenge: {
@@ -334,7 +338,7 @@ export const LESSONS: Lesson[] = [
       starter: 'frame:{[t] }',
       check: 'not (frame[0.0]~frame[1.0])',
       solution:
-        'frame:{[t] ([] x:.p5.cx+(0.4*.p5.w)*sin t; y:.p5.cy; r:30; fill:`gold) }',
+        'frame:{[t] draw circles[.p5.cx+(0.4*.p5.w)*sin t; .p5.cy; 30; `gold] }',
       hint: 'Use sin t to move x, and keep y fixed.',
     },
   },
@@ -345,11 +349,11 @@ export const LESSONS: Lesson[] = [
     blocks: [
       t('`.p5.mx` and `.p5.my` follow the mouse or finger. Because they are ordinary values you can put them straight into a table.'),
       s(
-        'bg `#0a0d13\nframe:{[t]\n  k:til 12;\n  a:(2*pi*k%12)+t;\n  p:polar[70;a];\n  update x:.p5.mx+x, y:.p5.my+y, r:10, fill:hsv[k%12;0.7;1] from p }'
+        'bg `#0a0d13\nframe:{[t]\n  k:til 12;\n  p:polar[70;(2*pi*k%12)+t];\n  draw circles[.p5.mx+p`x; .p5.my+p`y; 10; hsv[k%12;0.7;1]] }'
       ),
       t('`.p5.down` is true while the pointer is held, and `?[cond;a;b]` picks values elementwise:'),
       s(
-        'bg `#0a0d13\nframe:{[t]\n  i:til 200;\n  d:?[.p5.down;120;40];\n  p:polar[d*sqrt i%200;i*2.4];\n  update x:.p5.cx+x, y:.p5.cy+y, r:3, fill:?[.p5.down;`#ff7ab2;`#5ec2ff] from p }'
+        'bg `#0a0d13\nframe:{[t]\n  i:til 200;\n  d:?[.p5.down;120;40];\n  p:polar[d*sqrt i%200;i*2.4];\n  draw circles[.p5.cx+p`x; .p5.cy+p`y; 3; ?[.p5.down;`#ff7ab2;`#5ec2ff]] }'
       ),
       n('On a phone the whole canvas is a touch surface — `.p5.touch` is a table of active touches with x, y and id columns.'),
     ],
@@ -357,25 +361,34 @@ export const LESSONS: Lesson[] = [
   {
     id: 'state',
     title: 'State without loops',
-    blurb: 'init, step, view — an animation as a fold.',
+    blurb: 'Give frame two parameters and it remembers.',
     blocks: [
       t(
-        'Some sketches need memory. Instead of mutating globals, define three things: `init` (the starting state), `step[state;t]` (the next state) and `view[state]` (a scene table). The runtime folds `step` over time.'
+        'Some sketches need memory. Give `frame` a **second parameter** and it is handed whatever it returned last time — the animation becomes a fold over time, with no mutable globals in sight.'
+      ),
+      n(
+        "`frame:{[t] … }` gets the time. `frame:{[s;t] … }` gets last time's answer *and* the time, and whatever it returns becomes the next `s`. `init` sets the first one."
       ),
       s(
-        'bg `#06080c\ninit:([] x:200?800f; y:200?600f; vx:(200?2.0)-1; vy:(200?2.0)-1)\n\nstep:{[s;t]\n  s:update x:x+vx, y:y+vy from s;\n  s:update vx:?[(x<0)|x>.p5.w;neg vx;vx] from s;\n  update vy:?[(y<0)|y>.p5.h;neg vy;vy] from s }\n\nview:{[s] update shape:`circle, r:3, fill:`#7dd3fc from s }'
+        'bg `#06080c\ninit:([] x:200?800f; y:200?600f; vx:(200?2.0)-1; vy:(200?2.0)-1)\n\nframe:{[s;t]\n  s:update x:x+vx, y:y+vy from s;\n  s:update vx:?[(x<0)|x>.p5.w;neg vx;vx] from s;\n  s:update vy:?[(y<0)|y>.p5.h;neg vy;vy] from s;\n  draw circles[s`x; s`y; 3; `#7dd3fc];\n  s }'
       ),
       t(
-        'The state can be anything: a table of particles, a matrix, a dictionary, even a single number. This is the same shape as `over`/`scan` — the animation is a fold you can watch.'
+        'The state can be anything: a table of particles, a matrix, a dictionary, even a single number. It is the same shape as `over` and `scan` — an animation is a fold you can watch.'
       ),
-      n('If you prefer mutation, `::` assigns to a global from inside a function: `count::count+1`.'),
+      t(
+        'While a sketch runs the current state is also in the global `state`, so you can pause and inspect it at the `q)` prompt under the canvas.'
+      ),
+      n(
+        'Prefer mutation? `::` still assigns a global from inside a function (`n::n+1`) — the timers lesson does exactly that. Two parameters is the version with no bookkeeping.'
+      ),
     ],
     challenge: {
-      prompt: 'Make a state sketch whose state is a single number that grows by 1 every frame.',
-      starter: 'init:0\nstep:{[s;t] }\nview:{[s] }',
-      check: '2 = step[step[init;0];0]',
+      prompt: 'Make a sketch whose state is a single number that grows by 1 every frame.',
+      starter: 'init:0\nframe:{[s;t] }',
+      check: '2 = frame[frame[init;0];0]',
       solution:
-        'init:0\nstep:{[s;t] s+1}\nview:{[s] ([] x:.p5.cx; y:.p5.cy; r:1+s mod 100; fill:`gold)}',
+        'init:0\nframe:{[s;t]\n  draw circles[.p5.cx; .p5.cy; 1+s mod 100; `gold];\n  s+1 }',
+      hint: 'Draw something, then return s+1 as the last expression.',
     },
   },
   {
@@ -388,7 +401,7 @@ export const LESSONS: Lesson[] = [
       ),
       c('.p5.mouse'),
       s(
-        'bg `#0a0d13\nframe:{[t]\n  k:til 12;\n  p:polar[70;(2*pi*k%12)+t];\n  r:update x:.p5.mx+x, y:.p5.my+y, r:9, fill:hsv[k%12;0.7;1] from p;\n  r,texts[.p5.mx;.p5.my-100;"follow me";12] }'
+        'bg `#0a0d13\nframe:{[t]\n  p:polar[70;(2*pi*(til 12)%12)+t];\n  draw circles[.p5.mx+p`x; .p5.my+p`y; 9; hsv[(til 12)%12;0.7;1]];\n  draw texts[.p5.mx; .p5.my-100; "follow me"; 12] }'
       ),
       t(
         'Keys are a symbol list in `.p5.keys`, and `pressed` asks about one (or several) directly. It is vectorised, so arithmetic on key state works:'
@@ -399,7 +412,7 @@ export const LESSONS: Lesson[] = [
       ),
       t('A steering demo: acceleration is the difference of two booleans.'),
       s(
-        'bg `#07090d\ninit:`x`y`vx`vy!(.p5.cx;.p5.cy;0f;0f)\nstep:{[s;t]\n  s[`vx]:0.95*s[`vx]+0.5*pressed[`right]-pressed `left;\n  s[`vy]:0.95*s[`vy]+0.5*pressed[`down]-pressed `up;\n  s[`x]:(s[`x]+s`vx) mod .p5.w;\n  s[`y]:(s[`y]+s`vy) mod .p5.h;\n  s }\nview:{[s] circles[s`x;s`y;14;`gold],texts[80;24;"arrow keys";12] }'
+        'bg `#07090d\ninit:`x`y`vx`vy!(.p5.cx;.p5.cy;0f;0f)\nframe:{[s;t]\n  s[`vx]:0.95*s[`vx]+0.5*pressed[`right]-pressed `left;\n  s[`vy]:0.95*s[`vy]+0.5*pressed[`down]-pressed `up;\n  s[`x]:(s[`x]+s`vx) mod .p5.w;\n  s[`y]:(s[`y]+s`vy) mod .p5.h;\n  draw circles[s`x; s`y; 14; `gold];\n  draw texts[80; 24; "arrow keys"; 12];\n  s }'
       ),
       t('`.p5.down` is true while the pointer is held, `.p5.clicks` counts clicks, and `.p5.touch` is a table of active touches on a phone.'),
     ],
@@ -417,7 +430,7 @@ export const LESSONS: Lesson[] = [
     blurb: 'How kdb+ schedules work — and a second way to animate.',
     blocks: [
       t(
-        'Real kdb+ processes rarely have a draw loop. They set a **timer** and do periodic work in `.z.ts`. Both work here.'
+        'Real kdb+ processes rarely have a draw loop. They set a **timer** and do periodic work in `.z.ts`. It is the same shape as `frame` — a function on a clock that calls `draw` — except you choose the rate, and it is the clock a real kdb+ process would use.'
       ),
       c('\\t 250        / fire every 250 milliseconds'),
       c('.z.ti        / the current interval'),
@@ -439,6 +452,7 @@ export const LESSONS: Lesson[] = [
       n(
         '`.z.p`/`.z.P` timestamp · `.z.t`/`.z.T` time · `.z.d`/`.z.D` date · `.z.z`/`.z.Z` datetime · `.z.n`/`.z.N` timespan. Lower case is UTC, upper case is local — exactly as in kdb+.'
       ),
+      t('`frame` and `.z.ts` happily run together: let the timer update your data at its own rate and `frame` redraw at sixty a second.'),
       t('`\\t` with an expression instead of a number times it, in milliseconds:'),
       c('\\t sum til 100000'),
       t('Loops exist too, but you rarely want them. `do` and `while` are statements, not expressions:'),
@@ -481,13 +495,13 @@ export const LESSONS: Lesson[] = [
       ),
       c('.c.tbl .c.roots 5'),
       s(
-        'bg `#07090d\npts:.c.roots 9\ns:0.4*.p5.h\ncircles[.p5.cx+s*.c.re pts; .p5.cy+s*.c.im pts; 12; `gold],\n  poly[.p5.cx+s*.c.re pts; .p5.cy+s*.c.im pts; `#1f6feb]'
+        'bg `#07090d\npts:.c.roots 9\ns:0.4*.p5.h\ndraw poly[.p5.cx+s*.c.re pts; .p5.cy+s*.c.im pts; `#1f6feb]\ndraw circles[.p5.cx+s*.c.re pts; .p5.cy+s*.c.im pts; 12; `gold]'
       ),
       t(
         'Multiplying by a unit complex number is a rotation, which makes spinning things trivial:'
       ),
       s(
-        'bg `#07090d\npts:.c.roots 6\nframe:{[t]\n  w:.c.rot[pts;t];\n  s:0.35*.p5.h;\n  poly[.p5.cx+s*.c.re w; .p5.cy+s*.c.im w; `#b892ff] }'
+        'bg `#07090d\npts:.c.roots 6\nframe:{[t]\n  w:.c.rot[pts;t];\n  s:0.35*.p5.h;\n  draw poly[.p5.cx+s*.c.re w; .p5.cy+s*.c.im w; `#b892ff] }'
       ),
       h3('Fractals'),
       t(
@@ -498,7 +512,7 @@ export const LESSONS: Lesson[] = [
       c('step:{[c;z] .c.add[.c.mul[z;z];c]}\n.c.str 6 step[.c.z[-0.4;0.6]]/ .c.z[0;0]'),
       t('So a Mandelbrot set is a grid, an escape count, and a colour:'),
       s(
-        'bg `black\nW:110; H:80\nzs:.c.grid[W;H;.c.z[-2.2;-1.2];.c.z[0.8;1.2]]\nxy:grid[W;H]\ncw:.p5.w%W; ch:.p5.h%H\nn:.c.escape[0;zs;60]\nsel:update n:n, v:(n%60) xexp 0.4 from xy\nselect shape:`rect, x:cw*(0.5+x), y:ch*(0.5+y), w:cw+1, h:ch+1,\n       fill:?[n=60;`black;hsv[0.6+0.4*v;0.8;0.15+0.85*v]] from sel'
+        'bg `black\nW:110; H:80\nzs:.c.grid[W;H;.c.z[-2.2;-1.2];.c.z[0.8;1.2]]\nxy:grid[W;H]\ncw:.p5.w%W; ch:.p5.h%H\nn:.c.escape[0;zs;60]\nsel:update n:n, v:(n%60) xexp 0.4 from xy\ndraw select shape:`rect, x:cw*(0.5+x), y:ch*(0.5+y), w:cw+1, h:ch+1,\n            fill:?[n=60;`black;hsv[0.6+0.4*v;0.8;0.15+0.85*v]] from sel'
       ),
       n(
         'There is also `.c.fft` and `.c.ifft` if you want a spectrum, `.c.sqrt` `.c.log` `.c.pow` `.c.sin` `.c.cos` for the usual functions, and `.c.conj` `.c.inv` `.c.polar` `.c.expi` `.c.sum` `.c.avg`.'

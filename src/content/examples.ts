@@ -47,8 +47,8 @@ c:tris[u*5;.p5.cy-40;34;\`#b892ff]
 d:rings[u*1 2 3 4 5;.p5.cy+60;22;\`#2a3b4d]
 e:texts[.p5.cx;.p5.cy+140;"circles rects tris rings texts";13]
 
-/ combinators tweak a whole scene at once
-a,b,c,d,e`,
+/ one scene, drawn once
+draw a,b,c,d,e`,
   },
   {
     id: 'plotting',
@@ -62,7 +62,7 @@ walk:sums (300?1.0)-0.5
 lines2:plot (walk; 20 mavg walk)     / one scale, two colours
 dots:scatter[til 300;walk;2;\`#1f6feb]
 
-dots,lines2,texts[130;24;"random walk (blue) + 20-point moving average (pink)";12]`,
+draw dots,lines2,texts[130;24;"random walk (blue) + 20-point moving average (pink)";12]`,
   },
   {
     id: 'steer',
@@ -70,10 +70,11 @@ dots,lines2,texts[130;24;"random walk (blue) + 20-point moving average (pink)";1
     blurb: 'pressed`left / .p5.keys — arrow keys or WASD, with a trail.',
     tags: ['input', 'state'],
     code: `/ Click the canvas once, then use the arrow keys (or WASD).
+/ Two parameters, so frame is handed back whatever it returned last time.
 bg \`#07090d
 init:\`x\`y\`vx\`vy\`trail!(.p5.cx;.p5.cy;0f;0f;())
 
-step:{[s;t]
+frame:{[s;t]
   ax:0.5*(pressed[\`right]|pressed[\`d])-pressed[\`left]|pressed \`a;
   ay:0.5*(pressed[\`down]|pressed[\`s])-pressed[\`up]|pressed \`w;
   boost:1+pressed \`space;
@@ -82,14 +83,12 @@ step:{[s;t]
   s[\`x]:(s[\`x]+s\`vx) mod .p5.w;
   s[\`y]:(s[\`y]+s\`vy) mod .p5.h;
   s[\`trail]:(-120) sublist s[\`trail],enlist(s\`x;s\`y);
-  s }
 
-view:{[s]
   n:count s\`trail;
-  tr:$[n; circles[s[\`trail][;0];s[\`trail][;1];1+3*(til n)%n;\`#1f6feb]; ()];
-  ship:circles[s\`x;s\`y;13;\`gold];
-  hud:texts[90;24;"keys: ",", " sv string .p5.keys;12];
-  $[n; tr,ship,hud; ship,hud] }`,
+  if[n; draw circles[s[\`trail][;0];s[\`trail][;1];1+3*(til n)%n;\`#1f6feb]];
+  draw circles[s\`x;s\`y;13;\`gold];
+  draw texts[90;24;"keys: ",", " sv string .p5.keys;12];
+  s }`,
   },
   {
     id: 'paint',
@@ -100,12 +99,13 @@ view:{[s]
 bg \`#0b0e13
 init:([] x:\`float$(); y:\`float$(); r:\`float$(); c:\`symbol$())
 
-step:{[s;t]
-  if[not .p5.down; :s];
-  s:s upsert (.p5.mx; .p5.my; 6+10*abs sin 2*t; hsv[0.1*t;0.65;1]);
-  (-600) sublist s }
-
-view:{[s] $[count s; fade[circles[s\`x;s\`y;s\`r;s\`c];0.75]; texts[.p5.cx;.p5.cy;"drag to paint";18]] }`,
+frame:{[s;t]
+  if[.p5.down;
+    s:(-600) sublist s upsert (.p5.mx; .p5.my; 6+10*abs sin 2*t; hsv[0.1*t;0.65;1]) ];
+  draw $[count s;
+         fade[circles[s\`x;s\`y;s\`r;s\`c];0.75];
+         texts[.p5.cx;.p5.cy;"drag to paint";18]];
+  s }`,
   },
   {
     id: 'tick',
@@ -145,8 +145,8 @@ frame:{[t]
   c:.c.polar[0.7885;0.25*t];                    / c walks round a circle
   n:.c.escape[zs;c;48];                         / iterations survived
   s:update n:n, v:(n%48) xexp 0.45 from xy;     / gamma for contrast
-  select shape:\`rect, x:cw*(0.5+x), y:ch*(0.5+y), w:cw+1, h:ch+1,
-         fill:?[n=48;\`#05060a;hsv[0.55+0.45*v;0.85;0.15+0.85*v]] from s }`,
+  draw select shape:\`rect, x:cw*(0.5+x), y:ch*(0.5+y), w:cw+1, h:ch+1,
+              fill:?[n=48;\`#05060a;hsv[0.55+0.45*v;0.85;0.15+0.85*v]] from s }`,
   },
   {
     id: 'conformal',
@@ -162,7 +162,7 @@ frame:{[t]
   w:.c.add[.c.mul[zs;zs];.c.polar[0.9;0.4*t]];  / z^2 + a rotating constant
   w:.c.add[w;.c.mul[.c.inv .c.add[zs;.c.z[1.2;0]];0.35]];
   s:0.2*.p5.h;
-  points[.p5.cx+s*.c.re w; .p5.cy+s*.c.im w; hsv[hue;0.7;1]] }`,
+  draw points[.p5.cx+s*.c.re w; .p5.cy+s*.c.im w; hsv[hue;0.7;1]] }`,
   },
   {
     id: 'grid',
@@ -183,8 +183,8 @@ draw g`,
     title: 'Sine field',
     blurb: 'Animation is a pure function of time returning a table.',
     tags: ['animation'],
-    code: `/ Define frame:{[t] ...} and it is called ~60x a second.
-/ t is seconds since you pressed Run.
+    code: `/ frame runs ~60 times a second; t is seconds since you pressed Run.
+/ Call draw to put something on the canvas.
 bg \`#080b10
 
 n:90
@@ -192,7 +192,7 @@ frame:{[t]
   i:til n;
   x:(.p5.w%n)*0.5+i;
   y:.p5.cy+120*sin[(0.15*i)+3*t];
-  ([] x:x; y:y; r:4+3*sin[(0.3*i)-2*t]; fill:hsv[(i%n)+0.1*t;0.65;1]) }`,
+  draw circles[x; y; 4+3*sin[(0.3*i)-2*t]; hsv[(i%n)+0.1*t;0.65;1]] }`,
   },
   {
     id: 'orbit',
@@ -208,8 +208,8 @@ frame:{[t]
   p:polar[d;a];
   ring:update x:.p5.mx+x, y:.p5.my+y, r:5+3*cos[t*2+k],
               fill:hsv[(k%24)+0.05*t;0.7;1] from p;
-  cursor:([] shape:\`ring; x:.p5.mx; y:.p5.my; r:100+20*sin 2*t; stroke:\`#2a3b4d; sw:2);
-  ring,cursor }`,
+  cursor:rings[.p5.mx; .p5.my; 100+20*sin 2*t; \`#2a3b4d];
+  draw ring,cursor }`,
   },
   {
     id: 'walk',
@@ -224,9 +224,9 @@ px:100+sums (n?1.0)-0.5
 t:([] i:til n; px:px)
 t:update x:remap[i;0;n-1;40;.p5.w-40], y:remap[px;min px;max px;.p5.h-60;60] from t
 
-path:([] shape:\`path; pts:enlist flip (t\`x;t\`y); stroke:\`#5ec2ff; sw:2)
+trace:([] shape:\`path; pts:enlist flip (t\`x;t\`y); stroke:\`#5ec2ff; sw:2)
 dots:select shape:\`circle, x, y, r:2, fill:\`#1f6feb from t where 0=i mod 8
-path,dots`,
+draw trace,dots`,
   },
   {
     id: 'candles',
@@ -254,14 +254,14 @@ body:([] shape:\`rect; x:xs;
         y:0.5*sy[c\`o;lo;hi]+sy[c\`c;lo;hi];
         w:w; h:1|abs sy[c\`o;lo;hi]-sy[c\`c;lo;hi];
         fill:?[c[\`c]>c\`o;\`#26a65b;\`#e5484d])
-wick,body`,
+draw wick,body`,
   },
   {
     id: 'life',
     title: "Conway's life",
     blurb: 'State mode: init / step / view. The board is a boolean matrix.',
     tags: ['animation', 'state'],
-    code: `/ init, step and view: an animation as a fold over state.
+    code: `/ frame with two parameters is a fold over time: s is the board.
 bg \`#08090c
 N:36
 
@@ -272,15 +272,13 @@ gen:{[s]
   nbr:sum shift[s;;] ./: (1 1;1 0;1 -1;0 1;0 -1;-1 1;-1 0;-1 -1);
   (nbr=3)|s&nbr=2 }
 
-/ ten generations a second, not sixty
-step:{[s;t] $[0=.p5.f mod 6; gen s; s] }
-
-view:{[s]
-  g:grid[N;N];
-  cell:16;
-  g:update on:raze s from g;
-  select shape:\`rect, x:cell*0.5+x, y:cell*0.5+y, w:cell-2, h:cell-2,
-         fill:\`#7ee787 from g where on }`,
+frame:{[s;t]
+  s:$[0=.p5.f mod 6; gen s; s];        / ten generations a second, not sixty
+  cell:.p5.h%N;
+  g:update on:raze s from grid[N;N];
+  draw select shape:\`rect, x:cell*(0.5+x), y:cell*(0.5+y), w:cell-2, h:cell-2,
+              fill:\`#7ee787 from g where on;
+  s }`,
   },
   {
     id: 'phyllo',
@@ -291,10 +289,8 @@ view:{[s]
 n:900
 frame:{[t]
   k:til n;
-  a:(k*2.399963)+0.15*t;
-  r:6*sqrt k;
-  p:polar[r;a];
-  update x:.p5.cx+x, y:.p5.cy+y, r:1.5+3*k%n, fill:hsv[(k%n)+0.05*t;0.7;1] from p }`,
+  p:polar[6*sqrt k; (k*2.399963)+0.15*t];
+  draw circles[.p5.cx+p\`x; .p5.cy+p\`y; 1.5+3*k%n; hsv[(k%n)+0.05*t;0.7;1]] }`,
   },
   {
     id: 'lissajous',
@@ -307,7 +303,7 @@ frame:{[t]
   u:(2*pi)*(til n)%n;
   x:.p5.cx+(0.36*.p5.w)*sin[3*u+0.3*t];
   y:.p5.cy+(0.36*.p5.h)*sin[4*u];
-  ([] shape:\`path; pts:enlist flip (x;y); stroke:hsv[0.1*t;0.6;1]; sw:2) }`,
+  draw path[x; y; hsv[0.1*t;0.6;1]] }`,
   },
   {
     id: 'rule110',
@@ -328,7 +324,7 @@ rows:rowStep\\[70;r0]
 cell:.p5.w%W
 g:grid[W;count rows]
 g:update on:raze rows from g
-select shape:\`rect, x:cell*0.5+x, y:cell*0.5+y, w:cell, h:cell, fill:\`#c8f7c5 from g where on`,
+draw select shape:\`rect, x:cell*0.5+x, y:cell*0.5+y, w:cell, h:cell, fill:\`#c8f7c5 from g where on`,
   },
   {
     id: 'sortviz',
@@ -339,19 +335,15 @@ select shape:\`rect, x:cell*0.5+x, y:cell*0.5+y, w:cell, h:cell, fill:\`#c8f7c5 
 n:60
 init:n?100f
 
-/ one bubble pass every few frames
-step:{[s;t]
-  if[0=.p5.f mod 3;
+frame:{[s;t]
+  if[0=.p5.f mod 3;                     / one bubble pass every few frames
     i:til n-1;
     j:where s[i]>s[i+1];
     j:j where 0=j mod 2;
     s:@[s;j,j+1;:;s[j+1],s j] ];
-  s }
-
-view:{[s]
   w:.p5.w%n;
-  ([] shape:\`rect; x:w*0.5+til n; y:.p5.h-0.5*s*3; w:w-2; h:s*3;
-      fill:hsv[s%140;0.6;1]) }`,
+  draw rects[w*0.5+til n; .p5.h-0.5*s*3; w-2; s*3; hsv[s%140;0.6;1]];
+  s }`,
   },
   {
     id: 'score',
@@ -379,16 +371,14 @@ draw update shape:\`circle, x:remap[t;0;max t;50;.p5.w-50],
 n:500
 init:([] x:n?800f; y:n?600f)
 
-step:{[s;t]
+frame:{[s;t]
   a:(2*pi)*noise[0.005*s\`x;0.005*s\`y;0.12*t];
   s:update x:x+2.2*cos a, y:y+2.2*sin a from s;
   s:update x:x mod .p5.w, y:y mod .p5.h from s;
-  n:count s;
   keep:0.985>n?1.0;                            / respawn a few each frame
-  update x:?[keep;x;n?.p5.w], y:?[keep;y;n?.p5.h] from s }
-
-view:{[s] update shape:\`circle, r:1.6,
-          fill:hsv[0.55+0.15*x%.p5.w;0.5;1], a:0.8 from s }`,
+  s:update x:?[keep;x;n?.p5.w], y:?[keep;y;n?.p5.h] from s;
+  draw fade[circles[s\`x; s\`y; 1.6; hsv[0.55+0.15*(s\`x)%.p5.w;0.5;1]];0.8];
+  s }`,
   },
   {
     id: 'bars',
@@ -407,6 +397,6 @@ w:(.p5.w-60)%1.4*count agg
 bars:([] shape:\`rect; x:40+w*1.4*agg\`i; y:.p5.h-50-0.5*h; w:w; h:h; fill:pal[\`kdb] agg\`i)
 labs:([] shape:\`text; x:40+w*1.4*agg\`i; y:.p5.h-30; txt:string agg\`sym; size:12; fill:\`#8fa1b3)
 vals:([] shape:\`text; x:40+w*1.4*agg\`i; y:.p5.h-70-h; txt:string agg\`total; size:11; fill:\`#dfe7ef)
-bars,labs,vals`,
+draw bars,labs,vals`,
   },
 ];

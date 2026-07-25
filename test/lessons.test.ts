@@ -8,7 +8,7 @@ describe('lessons', () => {
   for (const lesson of LESSONS) {
     describe(lesson.id, () => {
       // a lesson is one q session, like a page of documentation
-      const { ip } = headless();
+      const { ip, rt } = headless();
       lesson.blocks.forEach((b, i) => {
         if (b.kind !== 'code' && b.kind !== 'sketch') return;
         it(`block ${i} runs`, () => {
@@ -18,19 +18,26 @@ describe('lessons', () => {
             return;
           }
           if (!res.ok) throw new Error(`'${res.error!.msg} — ${res.error!.hint ?? ''}\n${b.code}`);
-          // sketch blocks must actually produce something drawable
+          // sketch blocks must actually put something on the canvas
           if (b.kind === 'sketch') {
             const frame = ip.globals.get('frame');
-            const step = ip.globals.get('step');
+            const ts = ip.globals.get('.z.ts');
             if (frame) {
-              const scene = ip.apply(frame, [float(0.4)]);
-              expect(isTable(scene) || isDict(scene)).toBe(true);
-            } else if (step) {
-              const init = ip.globals.get('init')!;
-              const s2 = ip.apply(step, [init, float(0.1)]);
-              const view = ip.globals.get('view');
-              const scene = view ? ip.apply(view, [s2]) : s2;
-              expect(isTable(scene) || isDict(scene)).toBe(true);
+              const rank = ip.rankOf(frame);
+              const init = ip.globals.get('init');
+              let st = init === undefined ? UNIT : init;
+              for (const t of [0.0, 0.4]) {
+                const out =
+                  rank >= 2 ? ip.apply(frame, [st, float(t)]) : ip.apply(frame, [float(t)]);
+                if (rank >= 2) st = out;
+              }
+              const scene = rt.lastDrawn;
+              expect(isTable(scene!) || isDict(scene!), 'frame drew nothing').toBe(true);
+            } else if (ts) {
+              ip.apply(ts, [float(0.1)]);
+              expect(!!rt.lastDrawn, 'the timer drew nothing').toBe(true);
+            } else {
+              expect(!!rt.lastDrawn, 'the sketch drew nothing').toBe(true);
             }
           }
         });

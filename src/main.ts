@@ -117,6 +117,7 @@ function freshInterp() {
         println('sketch paused', 'note');
         updateBadges();
       },
+      onNote: (msg) => println(msg, 'hint'),
       onStatus: () => updateBadges(),
     });
   (window as any).qip = ip;
@@ -216,9 +217,12 @@ async function run() {
     if (e instanceof QError && e.hint) println(e.hint, 'hint');
   }
   const ms = performance.now() - t0;
+  // the program already handed this value to draw, so do not also print it
+  const alreadyDrawn = !!last && runtime.lastDrawn === last;
   runtime.start();
   // a scene table left at the end of the program is drawn for you
-  const drawn = ok && last && runtime.mode === 'idle' && runtime.autoDraw(last);
+  const drawn =
+    alreadyDrawn || (ok && !!last && runtime.mode === 'idle' && runtime.autoDraw(last));
   if (drawn) println(`drew ${count(last!)} shapes`, 'note');
   else if (ok && lastPrintable && last) println(display(last), 'out');
   updateBadges();
@@ -353,8 +357,18 @@ for (const b of Array.from(dpad.querySelectorAll('button')) as HTMLElement[]) {
   b.addEventListener('pointercancel', set(false));
 }
 
+/** strip q comments and string literals so we do not read English as code */
+function codeOnly(src: string): string {
+  return src
+    .split('\n')
+    .map((line) => line.replace(/(^|\s)\/.*$/, '$1'))
+    .join('\n')
+    .replace(/"(\\.|[^"\\])*"/g, '""');
+}
+
 function updateDpad(code: string) {
-  const wantsKeys = /pressed\b|\.p5\.keys|\.p5\.key\b/.test(code);
+  // only when the sketch actually asks about keys
+  const wantsKeys = /\bpressed\s*[[`]|\.p5\.keys?\b/.test(codeOnly(code));
   dpad.hidden = !wantsKeys;
   $('#canvas-wrap')!.classList.toggle('with-dpad', wantsKeys);
 }

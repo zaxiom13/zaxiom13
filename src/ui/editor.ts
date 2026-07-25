@@ -183,13 +183,13 @@ const PALETTE_NAMES = ['sunset','neon','ice','ember','forest','candy','mono','kd
 const SNIPPETS: { label: string; detail: string; body: string }[] = [
   {
     label: 'frame',
-    detail: 'animation: a pure function of time',
-    body: 'frame:{[t]\n  i:til 30;\n  ([] x:20+22*i; y:.p5.cy+90*sin[t+0.3*i]; r:8; fill:hsv[i%30;0.6;1]) }',
+    detail: 'animation: draw every frame',
+    body: 'frame:{[t]\n  i:til 30;\n  draw circles[20+22*i; .p5.cy+90*sin[t+0.3*i]; 8; hsv[i%30;0.6;1]] }',
   },
   {
-    label: 'stepview',
-    detail: 'animation with state: init / step / view',
-    body: 'init:([] x:100?800f; y:100?600f)\nstep:{[s;t] update x:x+1 from s}\nview:{[s] circles[s`x;s`y;3] }',
+    label: 'framestate',
+    detail: 'animation with state: frame[s;t]',
+    body: 'init:([] x:100?800f; y:100?600f)\nframe:{[s;t]\n  s:update x:(x+1) mod .p5.w from s;\n  draw circles[s`x; s`y; 3; `#7dd3fc];\n  s }',
   },
   {
     label: 'timer',

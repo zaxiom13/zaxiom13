@@ -20,6 +20,7 @@ export const DYNAMIC_DOCS: Record<string, string> = {
   '.p5.down': 'is the pointer held down?',
   '.p5.clicks': 'number of clicks so far',
   '.p5.mouse': 'dictionary: x y down clicks',
+  '.p5.scene': 'everything drawn during the previous tick',
   '.p5.touch': 'table of active touches',
   '.p5.keys': 'symbols of the keys held down',
   '.p5.key': 'the last key pressed',
@@ -218,7 +219,11 @@ export const DOCS: Record<string, RefDoc> = {
   cast: { sig: 'cast[`long;x]', doc: 'Same as `` `long$x ``.' },
 
   // canvas & sound
-  draw: { sig: 'draw scene', doc: 'Render a scene table. Returns it, so you can chain.', ex: ['draw ([] x:100 200; y:100; r:30 50; fill:`gold`crimson)'] },
+  draw: {
+    sig: 'draw scene',
+    doc: 'Put a scene on the canvas — the only thing that ever draws. Returns the scene, so `frame:{[s;t] … draw …}` hands last frame\'s picture back to you as `s`.',
+    ex: ['draw ([] x:100 200; y:100; r:30 50; fill:`gold`crimson)'],
+  },
   bg: { sig: 'bg `colour', doc: 'Set the background colour of the canvas.', ex: ['bg `#101820'] },
   lerp: { sig: 'lerp[a;b;t]', doc: 'Linear interpolation, vectorised.' },
   remap: { sig: 'remap[x;lo;hi;lo2;hi2]', doc: 'Rescale from one range into another — the plotting workhorse.' },

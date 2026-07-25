@@ -30,11 +30,12 @@ export function renderReference(host: HTMLElement, getIp: () => Interp, opts: Re
     el('div', {
       class: 'kv',
       html: [
-        ['draw scene', 'render a table of shapes'],
-        ['frame:{[t] scene}', 'animate: a pure function of time'],
-        ['init / step[s;t] / view[s]', 'animate with state (state is live at the q) prompt)'],
-        ['\\t 100 · .z.ts:{[now] …}', 'animate on a kdb+ timer'],
-        ['draw:{[t] .p5.circle[…] }', 'immediate mode, if you must'],
+        ['draw scene', 'the one way to put anything on the canvas (returns the scene)'],
+        ['frame:{[t] … draw … }', 'called ~60×/s with the time'],
+        ['frame:{[s;t] … draw … ; s}', '…and handed back whatever it returned last tick'],
+        ['init', 'the first value of s (optional)'],
+        ['\\t 100 · .z.ts:{[now] … }', 'the kdb+ timer: same idea, your own rate'],
+        ['.p5.scene', 'everything drawn during the previous tick'],
         ['shape builders', 'circles rings rects squares bars lines tris ngons points texts arcs path poly'],
         ['restyle a scene', 'paint outline fade spin nudge'],
         ['charts', 'plot y · plot[x;y] · plot (y1;y2) · scatter[x;y] · fitx · fity'],
