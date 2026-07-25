@@ -70,8 +70,10 @@ npm run preview        # serve dist/ over http
 npm run build:offline  # one self-contained file: dist-offline/qsketch.html
 ```
 
-Everything is static: `dist/` can be dropped on any host (there is a GitHub Pages workflow
-in `.github/workflows/`). It must be served over **http**, not opened as a `file://` path —
+Everything is static: `dist/` can be dropped on any host (there is a GitHub Pages workflow in
+`.github/workflows/`, and a `netlify.toml` pinning the build command, publish directory and
+cache headers). `npm run build` verifies that every asset `index.html` names was actually
+emitted, and `npm run verify:url <url>` checks the same thing against a deployed site. It must be served over **http**, not opened as a `file://` path —
 browsers refuse to load JavaScript modules from the filesystem. If you want a copy you can
 double-click, `npm run build:offline` inlines everything into a single 786 kB
 `qsketch.html` that runs from anywhere, offline.

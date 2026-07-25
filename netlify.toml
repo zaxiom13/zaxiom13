@@ -1,0 +1,28 @@
+# Netlify needs to be told exactly what to build and what to publish; the
+# auto-detected defaults have shipped an index.html without its assets.
+
+[build]
+  command = "npm run build && npm run build:offline && cp dist-offline/qsketch.html dist/qsketch.html"
+  publish = "dist"
+
+[build.environment]
+  NODE_VERSION = "22"
+  NPM_FLAGS = "--no-audit --no-fund"
+
+# hashed filenames never change contents, so they can be cached forever
+[[headers]]
+  for = "/assets/*"
+  [headers.values]
+    Cache-Control = "public, max-age=31536000, immutable"
+
+# ...but the page that names them must always be revalidated, otherwise a
+# cached index.html can outlive the chunks it points at
+[[headers]]
+  for = "/index.html"
+  [headers.values]
+    Cache-Control = "public, max-age=0, must-revalidate"
+
+[[headers]]
+  for = "/"
+  [headers.values]
+    Cache-Control = "public, max-age=0, must-revalidate"

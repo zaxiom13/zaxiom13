@@ -205,12 +205,42 @@
             setTimeout(reloadFresh, 250);
             return;
           }
-          window.__boot.fail(
-            'Could not download the application bundle.',
+          // ask the server what it thinks, so the message can be specific
+          var generic =
             (statusText ? statusText + '\n' : '') +
-              (url ? url + '\n\n' : '\n') +
-              'This is usually a stale cache or a flaky connection. Reload to try again;\nif it persists, a hard refresh (Ctrl/Cmd + Shift + R) clears it.'
-          );
+            (url ? url + '\n\n' : '\n') +
+            'Reload to try again; a hard refresh (Ctrl/Cmd + Shift + R) clears a stale cache.';
+          if (!url || typeof fetch !== 'function') {
+            window.__boot.fail('Could not download the application bundle.', generic);
+            return;
+          }
+          status.textContent = 'checking what went wrong…';
+          fetch(url, { cache: 'no-store' })
+            .then(function (r) {
+              if (r.status === 404)
+                window.__boot.fail(
+                  'The server does not have the file this page asks for.',
+                  url +
+                    '\n\nThe deployment is incomplete: index.html was published without its\nassets, or this page is a cached copy of an older build.\n\nA hard refresh (Ctrl/Cmd + Shift + R) fixes the cached case; otherwise\nthe site needs redeploying.'
+                );
+              else if (!r.ok)
+                window.__boot.fail(
+                  'The server refused to send the application bundle (HTTP ' + r.status + ').',
+                  generic
+                );
+              else
+                window.__boot.fail(
+                  'The bundle downloaded but the browser would not run it.',
+                  url +
+                    '\n\nThis usually means the file was served with the wrong content type,\nor the browser is too old for JavaScript modules.'
+                );
+            })
+            .catch(function () {
+              window.__boot.fail(
+                'Could not reach the server to download the application bundle.',
+                generic
+              );
+            });
         }
 
         // resource failures do not bubble, so listen in the capture phase
