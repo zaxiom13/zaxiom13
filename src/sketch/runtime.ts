@@ -36,7 +36,7 @@ import {
 } from '../q/value';
 import { drawScene, toColor, NAMED_COLORS } from './scene';
 import { installShapes } from './shapes';
-import { installNamespaces } from './namespaces';
+
 import { PALETTES } from './palette';
 import { AudioEngine } from './audio';
 
@@ -74,13 +74,19 @@ export class SketchRuntime {
   lastKey = '';
   clicks = 0;
   wheel = 0;
-  /** \t timer interval in milliseconds (0 = off) */
-  timerMs = 0;
   private lastTimer = 0;
   private keyHandlers: ((e: KeyboardEvent) => void)[] = [];
 
   /** headless runtimes (lesson sessions, tests) never touch the canvas */
   headless: boolean;
+
+  /** the \t interval lives on the interpreter, so \t works without a canvas */
+  get timerMs(): number {
+    return this.ip.timerMs;
+  }
+  set timerMs(v: number) {
+    this.ip.timerMs = v;
+  }
 
   constructor(ip: Interp, container: HTMLElement | null, events: RuntimeEvents = {}) {
     this.ip = ip;
@@ -473,7 +479,6 @@ export class SketchRuntime {
 
     (ip as any).__rt = self;
     installShapes(ip);
-    installNamespaces(ip, self);
 
     def(
       'pressed',

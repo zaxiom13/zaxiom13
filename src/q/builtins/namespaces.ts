@@ -1,8 +1,7 @@
 // The .z (system/time) and .Q (utility) namespaces, plus the \t timer that
 // drives kdb+-style periodic work.
 
-import type { Interp } from '../q/eval';
-import type { SketchRuntime } from './runtime';
+import type { Interp } from '../eval';
 import {
   QValue,
   QAtom,
@@ -37,9 +36,9 @@ import {
   NIL,
   TYPE_CHAR,
   matchValues,
-} from '../q/value';
-import { display, compact, gfmt, DEFAULT_OPTS } from '../q/format';
-import { daysFromEpoch, ymdFromDays } from '../q/lexer';
+} from '../value';
+import { display, compact, gfmt, DEFAULT_OPTS } from '../format';
+import { daysFromEpoch, ymdFromDays } from '../lexer';
 
 const NS_PER_DAY = 86400000000000n;
 const EPOCH_MS = Date.UTC(2000, 0, 1);
@@ -52,7 +51,9 @@ function nowNanos(local: boolean): bigint {
 
 const dayNanos = (n: bigint) => ((n % NS_PER_DAY) + NS_PER_DAY) % NS_PER_DAY;
 
-export function installNamespaces(ip: Interp, rt: SketchRuntime) {
+export function installNamespaces(ip: Interp) {
+  /** the sketch runtime, when there is one (it owns the animation clock) */
+  const rt = () => (ip as any).__rt as { retime(): void } | undefined;
   const def = (
     name: string,
     ranks: number[],
@@ -97,7 +98,7 @@ export function installNamespaces(ip: Interp, rt: SketchRuntime) {
     '.z.q': () => bool(false),
     '.z.b': () => dict(symvec([]), listFrom([])),
     // the timer interval, so `\t` and .z.ts can be inspected from q
-    '.z.ti': () => long(rt.timerMs),
+    '.z.ti': () => long(ip.timerMs),
   };
   Object.assign(ip.dynamicHooks, zHooks);
 
@@ -110,10 +111,10 @@ export function installNamespaces(ip: Interp, rt: SketchRuntime) {
     const rest = cmd.slice(1).trim();
     switch (head) {
       case 't': {
-        if (rest === '') return long(rt.timerMs);
+        if (rest === '') return long(ip.timerMs);
         if (/^-?\d+$/.test(rest)) {
-          rt.timerMs = Math.max(0, parseInt(rest, 10));
-          rt.retime();
+          ip.timerMs = Math.max(0, parseInt(rest, 10));
+          rt()?.retime();
           return UNIT;
         }
         // \t expression - time it, in milliseconds
