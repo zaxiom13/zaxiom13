@@ -127,18 +127,27 @@
       <div class="track"><div class="bar" id="boot-bar"></div></div>
       <div class="status" id="boot-status">loading…</div>
       <pre class="err" id="boot-err"></pre>
-      <button class="retry" onclick="location.reload()">reload</button>
+      <button class="retry" id="boot-retry">reload</button>
     </div>
 
     <script>
-      // progress reporting, available before the bundle has parsed
+      // progress reporting and failure diagnosis, available before the bundle parses
       (function () {
         var bar = document.getElementById('boot-bar');
         var status = document.getElementById('boot-status');
         var box = document.getElementById('boot');
         var err = document.getElementById('boot-err');
+        var retry = document.getElementById('boot-retry');
         var done = false;
         var pct = 0;
+        var isFile = location.protocol === 'file:';
+
+        function reloadFresh() {
+          var u = location.href.split('#')[0].split('?')[0];
+          location.replace(u + '?v=' + Date.now() + location.hash);
+        }
+        retry.addEventListener('click', reloadFresh);
+
         window.__boot = {
           step: function (p, label) {
             if (done) return;
@@ -146,34 +155,76 @@
             bar.style.width = pct + '%';
             if (label) status.textContent = label;
           },
-          fail: function (msg) {
+          fail: function (msg, detail) {
+            if (done) return;
             done = true;
             box.classList.add('failed');
             box.classList.remove('gone');
             status.textContent = 'could not start';
-            err.textContent = String(msg);
+            err.textContent = String(msg) + (detail ? '\n\n' + detail : '');
           },
           done: function () {
             if (done) return;
             done = true;
             bar.style.width = '100%';
             box.classList.add('gone');
+            try {
+              sessionStorage.removeItem('qsketch.retried');
+            } catch (e) {}
             setTimeout(function () {
               box.style.display = 'none';
             }, 300);
           },
         };
+
+        // the app could not be fetched: work out why, and recover if we can
+        function bundleFailed(url, statusText) {
+          if (isFile) {
+            window.__boot.fail(
+              'Browsers refuse to load JavaScript modules from a file:// page, so this copy cannot start.',
+              'Serve the folder over http instead — from the project:\n\n    npm run preview\n\nthen open the printed http://localhost address.\nAny static server works; nothing is sent anywhere.\n\n(For a single file you can open directly, build one with:  npm run build:offline)'
+            );
+            return;
+          }
+          if (navigator.onLine === false) {
+            window.__boot.fail(
+              'You appear to be offline, so the app could not be downloaded.',
+              'Reconnect and reload. Once loaded, q·sketch runs entirely on your device.'
+            );
+            return;
+          }
+          // a cached index.html pointing at a build that no longer exists is
+          // the usual cause; one cache-busting reload fixes it
+          var retried = false;
+          try {
+            retried = sessionStorage.getItem('qsketch.retried') === '1';
+            sessionStorage.setItem('qsketch.retried', '1');
+          } catch (e) {}
+          if (!retried) {
+            status.textContent = 'fetching a fresh copy…';
+            setTimeout(reloadFresh, 250);
+            return;
+          }
+          window.__boot.fail(
+            'Could not download the application bundle.',
+            (statusText ? statusText + '\n' : '') +
+              (url ? url + '\n\n' : '\n') +
+              'This is usually a stale cache or a flaky connection. Reload to try again;\nif it persists, a hard refresh (Ctrl/Cmd + Shift + R) clears it.'
+          );
+        }
+
         // resource failures do not bubble, so listen in the capture phase
         window.addEventListener(
           'error',
           function (e) {
             if (done) return;
             var t = e.target;
-            if (t && (t.tagName === 'SCRIPT' || t.tagName === 'LINK')) {
-              if (t.tagName === 'LINK') return; // a missing font is not fatal
-              window.__boot.fail(
-                'Could not download the application bundle.\n\nCheck your connection and reload — everything runs locally once it is here.'
-              );
+            if (t && t.tagName === 'LINK') return; // a missing font is not fatal
+            if (t && t.tagName === 'SCRIPT') {
+              var src = t.src || '';
+              // ignore scripts that are not ours (extensions, analytics, ...)
+              var ours = !src || src.indexOf(location.origin) === 0 || isFile;
+              if (ours) bundleFailed(src, null);
               return;
             }
             if (e.message || e.error) window.__boot.fail((e.error && e.error.stack) || e.message);
@@ -181,22 +232,33 @@
           true
         );
         window.addEventListener('unhandledrejection', function (e) {
-          if (!done) window.__boot.fail((e.reason && (e.reason.stack || e.reason.message)) || e.reason);
+          if (done) return;
+          var r = e.reason;
+          var msg = (r && (r.stack || r.message)) || String(r);
+          if (/dynamically imported module|Failed to fetch|Importing a module/i.test(msg))
+            bundleFailed('', 'A part of the app could not be fetched.');
+          else window.__boot.fail(msg);
         });
+
         // watchdogs: reassure, then give up with something actionable
         setTimeout(function () {
           if (!done) window.__boot.step(pct, 'still loading — slow connection?');
         }, 6000);
         setTimeout(function () {
-          if (!done && pct < 55) document.querySelector('#boot .retry').style.display = 'block';
+          if (!done && pct < 55) retry.style.display = 'block';
         }, 12000);
         setTimeout(function () {
-          if (!done)
+          // do not auto-retry here: a slow connection is better left alone
+          if (!done && pct < 55)
             window.__boot.fail(
-              'The app did not finish loading.\n\nThis is usually a flaky network. Reloading normally fixes it — everything runs locally in the browser once it is here.'
+              'The app did not finish loading.',
+              'It may just be a slow connection — the reload button will try again.\nEverything runs locally once it is here.'
             );
         }, 25000);
-        window.__boot.step(8, 'fetching the interpreter…');
+
+        if (isFile)
+          window.__boot.step(8, 'opened from a file — this usually will not work…');
+        else window.__boot.step(8, 'fetching the interpreter…');
       })();
     </script>
 

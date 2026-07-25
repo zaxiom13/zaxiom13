@@ -17,6 +17,7 @@ jobs:
       - run: npm ci
       - run: npm test
       - run: npm run build
+      - run: npm run build:offline
 
   pages:
     if: github.ref == 'refs/heads/main'
@@ -36,6 +37,8 @@ jobs:
           cache: npm
       - run: npm ci
       - run: npm run build
+      # ship a single-file copy alongside the site
+      - run: npm run build:offline && cp dist-offline/qsketch.html dist/qsketch.html
       - uses: actions/configure-pages@v5
       - uses: actions/upload-pages-artifact@v3
         with:

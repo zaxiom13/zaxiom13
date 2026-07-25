@@ -62,14 +62,19 @@ loaded when you open them. `npm run loadperf` measures it.
 
 ```bash
 npm install
-npm run dev        # http://localhost:5173
-npm test           # interpreter, examples and lesson snippets
-npm run parity     # replay the kdb+ documentation corpus
-npm run build      # static site in dist/
+npm run dev            # http://localhost:5173
+npm test               # interpreter, examples and lesson snippets
+npm run parity         # replay the kdb+ documentation corpus
+npm run build          # static site in dist/
+npm run preview        # serve dist/ over http
+npm run build:offline  # one self-contained file: dist-offline/qsketch.html
 ```
 
 Everything is static: `dist/` can be dropped on any host (there is a GitHub Pages workflow
-in `.github/workflows/`).
+in `.github/workflows/`). It must be served over **http**, not opened as a `file://` path —
+browsers refuse to load JavaScript modules from the filesystem. If you want a copy you can
+double-click, `npm run build:offline` inlines everything into a single 786 kB
+`qsketch.html` that runs from anywhere, offline.
 
 ## The idea
 
