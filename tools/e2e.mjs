@@ -151,6 +151,54 @@ await withPage(
   }
 );
 
+// 6. keyboard: the steer example reacts to arrow keys, and to the on-screen pad
+await withPage('keyboard', { viewport: { width: 1000, height: 800 } }, async (page) => {
+  await page.selectOption('#examples', 'steer');
+  await page.waitForTimeout(1200);
+  const box = await page.$eval('#canvas', (el) => {
+    const r = el.getBoundingClientRect();
+    return { x: r.x, y: r.y, w: r.width, h: r.height };
+  });
+  await page.mouse.click(box.x + box.w / 2, box.y + box.h / 2);
+  const read = () => page.evaluate(() => window.qeval('floor (state`x;state`y)'));
+  const before = await read();
+  await page.keyboard.down('ArrowRight');
+  await page.waitForTimeout(800);
+  await page.keyboard.up('ArrowRight');
+  await page.waitForTimeout(200);
+  const after = await read();
+  ok(before !== after, `arrow keys did not move the ship (${before} -> ${after})`);
+  ok(await page.isVisible('#dpad'), 'on-screen pad not shown for a keyboard sketch');
+});
+
+// 7. mouse: the pointer reaches q as .p5.mx / .p5.my
+await withPage('mouse', { viewport: { width: 1000, height: 800 } }, async (page) => {
+  await page.selectOption('#examples', 'orbit');
+  await page.waitForTimeout(900);
+  const box = await page.$eval('#canvas', (el) => {
+    const r = el.getBoundingClientRect();
+    return { x: r.x, y: r.y, w: r.width, h: r.height };
+  });
+  await page.mouse.move(box.x + box.w * 0.3, box.y + box.h * 0.4);
+  await page.waitForTimeout(400);
+  const pos = await page.evaluate(() => window.qeval('floor (.p5.mx;.p5.my)'));
+  const [mx, my] = pos.split(' ').map(Number);
+  ok(
+    Math.abs(mx - box.w * 0.3) < 6 && Math.abs(my - box.h * 0.4) < 6,
+    `pointer not reported to q: got ${pos}, expected near ${Math.round(box.w * 0.3)} ${Math.round(box.h * 0.4)}`
+  );
+});
+
+// 8. timer: \t + .z.ts keeps firing
+await withPage('timer', { viewport: { width: 1000, height: 800 } }, async (page) => {
+  await page.selectOption('#examples', 'tick');
+  await page.waitForTimeout(2500);
+  const n = Number(await page.evaluate(() => window.qeval('count trade')));
+  ok(n > 8, `.z.ts only fired ${n} times in 2.5s`);
+  const mode = await page.textContent('#badge-mode');
+  ok((mode ?? '').includes('timer'), `expected timer mode, got ${mode}`);
+});
+
 await browser.close();
 console.log(`${checks} checks`);
 if (problems.length) {

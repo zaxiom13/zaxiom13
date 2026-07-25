@@ -34,7 +34,7 @@ import {
   raw,
   QVector,
 } from '../q/value';
-import { drawScene, toColor } from './scene';
+import { drawScene, toColor, NAMED_COLORS } from './scene';
 import { installShapes } from './shapes';
 import { installNamespaces } from './namespaces';
 import { PALETTES } from './palette';
@@ -97,6 +97,14 @@ export class SketchRuntime {
   }
 
   // ------------------------------------------------------------------ p5
+
+  /** on-screen controls (and tests) can push key state directly */
+  setKey(name: string, down: boolean) {
+    if (down) {
+      this.keys.add(name);
+      this.lastKey = name;
+    } else this.keys.delete(name);
+  }
 
   /** Window-level key tracking that ignores typing in the editor. */
   private installKeys() {
@@ -176,7 +184,7 @@ export class SketchRuntime {
         self.clicks++;
         self.audio.resume();
       };
-      p.touchStarted = () => {
+      (p as any).touchStarted = () => {
         self.clicks++;
         self.audio.resume();
       };
@@ -713,15 +721,23 @@ export class SketchRuntime {
       ['gray 0.5']
     );
 
+    // colours, palettes and shape names live in .p5 so they are discoverable
+    ip.globals.set(
+      '.p5.col',
+      dict(symvec(Object.keys(NAMED_COLORS)), symvec(Object.values(NAMED_COLORS)))
+    );
+    ip.globals.set(
+      '.p5.shapes',
+      symvec([
+        'circle','ring','rect','box','square','line','tri','ngon','text','point','path','poly','arc','ellipse',
+      ])
+    );
+
     // palettes as a plain q dictionary
     const palKeys = Object.keys(PALETTES);
-    ip.globals.set(
-      'pal',
-      dict(
-        symvec(palKeys),
-        listFrom(palKeys.map((k) => symvec(PALETTES[k])))
-      )
-    );
+    const palDict = dict(symvec(palKeys), listFrom(palKeys.map((k) => symvec(PALETTES[k]))));
+    ip.globals.set('pal', palDict);
+    ip.globals.set('.p5.pal', palDict);
 
     // ---- immediate mode ---------------------------------------------------
     const imm = (name: string, ranks: number[], fn: (p: p5, a: QValue[]) => void, doc: string) =>

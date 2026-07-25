@@ -1,0 +1,24 @@
+// Prove the on-screen pad drives a sketch on a phone-sized touch device.
+import { chromium } from 'playwright';
+const b = await chromium.launch();
+const ctx = await b.newContext({ viewport: { width: 390, height: 844 }, isMobile: true, hasTouch: true, deviceScaleFactor: 2 });
+const p = await ctx.newPage();
+const errs = []; p.on('pageerror', (e) => errs.push(e.message));
+await p.goto('http://localhost:4173/', { waitUntil: 'networkidle' });
+await p.waitForTimeout(1200);
+await p.selectOption('#examples', 'steer');
+await p.waitForTimeout(1500);
+console.log('dpad visible:', await p.isVisible('#dpad'));
+const before = await p.evaluate(() => window.qeval('floor (state`x;state`y)'));
+const right = await p.$('#dpad button[data-key="right"]');
+const box = await right.boundingBox();
+await p.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
+await p.mouse.down();
+await p.waitForTimeout(1200);
+await p.mouse.up();
+await p.waitForTimeout(300);
+const after = await p.evaluate(() => window.qeval('floor (state`x;state`y)'));
+console.log('ship before', before, '-> after', after);
+await p.screenshot({ path: '/tmp/interact/mobile-keys.png' });
+console.log('errors', errs);
+await b.close();

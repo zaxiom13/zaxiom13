@@ -27,7 +27,7 @@ export interface SceneDefaults {
   r: number;
 }
 
-const NAMED: Record<string, string> = {
+export const NAMED_COLORS: Record<string, string> = {
   black: '#000000',
   white: '#ffffff',
   red: '#ff3b30',
@@ -64,7 +64,7 @@ export function toColor(v: QValue | undefined, dflt: string): string {
       const s = String(val);
       if (!s) return dflt;
       if (s[0] === '#') return s;
-      const n = NAMED[s.toLowerCase()];
+      const n = NAMED_COLORS[s.toLowerCase()];
       if (n) return n;
       return s;
     }
@@ -81,7 +81,7 @@ export function toColor(v: QValue | undefined, dflt: string): string {
   }
   if (v.t === 10) {
     const s = (v as QVector).v as string;
-    return s[0] === '#' ? s : NAMED[s.toLowerCase()] ?? s;
+    return s[0] === '#' ? s : NAMED_COLORS[s.toLowerCase()] ?? s;
   }
   if (v.t >= 1 && v.t <= 9) {
     const arr = (v as QVector).v as number[];
@@ -138,6 +138,12 @@ export interface DrawOpts {
 
 /** Draw one scene table onto a p5 instance. */
 export function drawScene(p: p5, scene: QValue, opts: DrawOpts): number {
+  // a list of scenes draws them all, so `draw (a;b;c)` works
+  if (scene.t === 0 && count(scene) > 0) {
+    let total = 0;
+    for (let i = 0; i < count(scene); i++) total += drawScene(p, at(scene, i), opts);
+    return total;
+  }
   if (isDict(scene) && !isTable(scene)) {
     // a single shape given as a dictionary
     const d = scene as QDict;

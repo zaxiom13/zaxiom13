@@ -63,6 +63,15 @@ app.innerHTML = `
           <button id="snap" title="Save a PNG">PNG</button>
           <button id="rec" title="Record a webm clip">REC</button>
         </div>
+        <div class="dpad" id="dpad" hidden>
+          <div class="dpad-grid">
+            <button data-key="up">▲</button>
+            <button data-key="left">◀</button>
+            <button data-key="down">▼</button>
+            <button data-key="right">▶</button>
+          </div>
+          <button class="dpad-action" data-key="space">●</button>
+        </div>
         <div class="canvas-badges">
           <span class="badge mode" id="badge-mode">idle</span>
           <span class="badge" id="badge-fps"></span>
@@ -169,6 +178,7 @@ async function run() {
   clearConsole();
   runtime.clear();
   freshInterp();
+  updateDpad(code);
   runtime.mount();
   const t0 = performance.now();
   let ok = true;
@@ -310,6 +320,29 @@ function showTrace(src: string) {
     const arrow = s.depth < 0 ? '=' : '→';
     println(`${pad}${s.src}  ${arrow}  ${val.length > 90 ? val.slice(0, 90) + '..' : val}`, 'note');
   }
+}
+
+// ------------------------------------------------------------- on-screen keys
+
+// phones have no arrow keys, so show a pad when the sketch asks about keys
+const dpad = $('#dpad')!;
+for (const b of Array.from(dpad.querySelectorAll('button')) as HTMLElement[]) {
+  const key = b.dataset.key!;
+  const set = (down: boolean) => (e: Event) => {
+    e.preventDefault();
+    runtime.setKey(key, down);
+    b.classList.toggle('held', down);
+  };
+  b.addEventListener('pointerdown', set(true));
+  b.addEventListener('pointerup', set(false));
+  b.addEventListener('pointerleave', set(false));
+  b.addEventListener('pointercancel', set(false));
+}
+
+function updateDpad(code: string) {
+  const wantsKeys = /pressed\b|\.p5\.keys|\.p5\.key\b/.test(code);
+  dpad.hidden = !wantsKeys;
+  $('#canvas-wrap')!.classList.toggle('with-dpad', wantsKeys);
 }
 
 // ---------------------------------------------------------------- repl
