@@ -4,25 +4,35 @@ import { chromium } from 'playwright';
 
 const url = process.argv[2] || 'http://localhost:4173/';
 const label = process.argv[3] || 'run';
+const desktop = process.argv.includes('--desktop');
 const b = await chromium.launch();
-const ctx = await b.newContext({
-  viewport: { width: 390, height: 844 },
-  isMobile: true,
-  hasTouch: true,
-  deviceScaleFactor: 2,
-});
+const ctx = await b.newContext(
+  desktop
+    ? { viewport: { width: 1440, height: 900 } }
+    : { viewport: { width: 390, height: 844 }, isMobile: true, hasTouch: true, deviceScaleFactor: 2 }
+);
 const page = await ctx.newPage();
 
 // Fast-3G-ish network + 4x CPU slowdown
 const client = await ctx.newCDPSession(page);
 await client.send('Network.enable');
-await client.send('Network.emulateNetworkConditions', {
-  offline: false,
-  latency: 150,
-  downloadThroughput: (1.6 * 1024 * 1024) / 8,
-  uploadThroughput: (750 * 1024) / 8,
-});
-await client.send('Emulation.setCPUThrottlingRate', { rate: 4 });
+if (!desktop) {
+  await client.send('Network.emulateNetworkConditions', {
+    offline: false,
+    latency: 150,
+    downloadThroughput: (1.6 * 1024 * 1024) / 8,
+    uploadThroughput: (750 * 1024) / 8,
+  });
+  await client.send('Emulation.setCPUThrottlingRate', { rate: 4 });
+} else {
+  // a fast connection, but still a real network round trip
+  await client.send('Network.emulateNetworkConditions', {
+    offline: false,
+    latency: 20,
+    downloadThroughput: (30 * 1024 * 1024) / 8,
+    uploadThroughput: (10 * 1024 * 1024) / 8,
+  });
+}
 
 
 const t0 = Date.now();
