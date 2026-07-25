@@ -282,8 +282,13 @@ export function lex(src: string): Tok[] {
     }
 
     if (c === '\\') {
-      // system command / trailing backslash - treat rest of line as noop
+      // a system command at the start of a line: \t 100  ->  system "t 100"
       const eol = src.indexOf('\n', i);
+      const line = src.slice(i + 1, eol === -1 ? n : eol);
+      if (atLineStart(i) && /^[a-zA-Z]/.test(line)) {
+        push({ k: 'name', s: 'system', i, e: i + 1 });
+        push({ k: 'str', s: JSON.stringify(line), i: i + 1, e: eol === -1 ? n : eol, v: line });
+      }
       i = eol === -1 ? n : eol;
       continue;
     }

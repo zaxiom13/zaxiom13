@@ -245,11 +245,23 @@ function drawRow(p: p5, get: (n: string) => QValue | undefined, opts: DrawOpts) 
     case 'triangle': {
       applyStyle(p, get, opts, true);
       const r = num(get('r'), 12);
-      const x2 = get('x2') !== undefined ? num(get('x2'), 0) - (hasRot ? x : 0) : px - r;
-      const y2 = get('y2') !== undefined ? num(get('y2'), 0) - (hasRot ? y : 0) : py + r;
-      const x3 = get('x3') !== undefined ? num(get('x3'), 0) - (hasRot ? x : 0) : px + r;
-      const y3 = get('y3') !== undefined ? num(get('y3'), 0) - (hasRot ? y : 0) : py + r;
-      p.triangle(px, py - (get('x2') === undefined ? r : 0), x2, y2, x3, y3);
+      if (get('x2') === undefined) {
+        // equilateral, pointing up, centred on x,y
+        const dx = r * Math.sin((2 * Math.PI) / 3);
+        const dy = r * Math.cos((2 * Math.PI) / 3);
+        p.triangle(px, py - r, px + dx, py - dy, px - dx, py - dy);
+      } else {
+        const ox = hasRot ? x : 0;
+        const oy = hasRot ? y : 0;
+        p.triangle(
+          px,
+          py,
+          num(get('x2'), 0) - ox,
+          num(get('y2'), 0) - oy,
+          num(get('x3'), 0) - ox,
+          num(get('y3'), 0) - oy
+        );
+      }
       break;
     }
     case 'arc': {

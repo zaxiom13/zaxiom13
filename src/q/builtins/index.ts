@@ -701,7 +701,7 @@ export function installBuiltins(ip: Interp) {
     const [x, y] = a;
     if (isAtom(x) && Math.abs(x.t) === 7 && isNullAt(x.t, A(x))) {
       // 0N!x  - display and return
-      ip2.out(display(y));
+      ip2.out(display(y, ip2.fmt as any));
       return y;
     }
     if (isAtom(x) && Math.abs(x.t) === 7 && y.t === -11) {
@@ -1452,7 +1452,10 @@ export function installBuiltins(ip: Interp) {
       const [tt, v] = castScalar(t, y.t, A(y));
       return atom(-tt, v);
     }
-    if (y.t === 0) return fromItems(items(y).map((e) => castTo(t, e)));
+    if (y.t === 0) {
+      if (count(y) === 0) return typedVec(t, []); // `float$() is an empty float vector
+      return fromItems(items(y).map((e) => castTo(t, e)));
+    }
     const n = count(y);
     const out = new Array(n);
     const arr = y.t === 10 ? ((y as QVector).v as string).split('') : ((y as QVector).v as any[]);
@@ -2266,7 +2269,24 @@ export function installBuiltins(ip: Interp) {
   });
 
   def('sublist', [2], (ip2, [x, y]) => {
-    if (isAtom(x)) return take(ip2, x, y);
+    if (isAtom(x)) {
+      // unlike take, sublist never recycles: it clamps to what is there
+      const n = Math.trunc(N(x));
+      const len = count(y);
+      const idx: number[] = [];
+      if (n >= 0) for (let i = 0; i < Math.min(n, len); i++) idx.push(i);
+      else for (let i = Math.max(0, len + n); i < len; i++) idx.push(i);
+      if (isKeyedTable(y)) {
+        const kt = y as QDict;
+        return dict(selectTableRows(kt.k as QTable, idx), selectTableRows(kt.v as QTable, idx));
+      }
+      if (isTable(y)) return selectTableRows(y as QTable, idx);
+      if (isDict(y)) {
+        const d = y as QDict;
+        return dict(selectRows(d.k, idx), selectRows(d.v, idx));
+      }
+      return selectRows(y, idx);
+    }
     const start = Math.trunc(numOf(raw(x, 0)));
     const len = Math.trunc(numOf(raw(x, 1)));
     const n = count(y);
@@ -2890,7 +2910,7 @@ export function installBuiltins(ip: Interp) {
   }
 
   def('show', [1], (ip2, [x]) => {
-    ip2.out(display(x));
+    ip2.out(display(x, ip2.fmt as any));
     return UNIT;
   });
   def('eval', [1], (ip2, [x]) => {

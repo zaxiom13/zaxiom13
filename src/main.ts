@@ -154,6 +154,13 @@ const editor: EditorView = createEditor({
   },
 });
 
+(window as any).qeditor = editor;
+// a tiny hook so tests (and the curious) can evaluate q from the console
+(window as any).qeval = (src: string) => {
+  const r = runConsole(ip, src);
+  return r.ok ? r.output : "'" + r.error!.msg;
+};
+
 // ---------------------------------------------------------------- running
 
 async function run() {

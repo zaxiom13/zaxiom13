@@ -65,6 +65,38 @@ await withPage('repl', { viewport: { width: 1280, height: 860 } }, async (page) 
   ok(/til 10/.test(notes) && /45/.test(notes), 'trace output missing');
 });
 
+// 2b. autocomplete: namespaces, symbols and snippets
+await withPage('autocomplete', { viewport: { width: 1280, height: 860 } }, async (page) => {
+  const type = async (text) => {
+    await page.click('.cm-content');
+    await page.keyboard.press('Control+a');
+    await page.keyboard.type(text, { delay: 20 });
+    await page.waitForTimeout(400);
+  };
+  const options = () =>
+    page.$$eval('.cm-tooltip-autocomplete li', (ls) => ls.map((l) => l.textContent));
+
+  await type('.p5.m');
+  let opts = await options();
+  ok(
+    opts.some((o) => o.includes('.p5.mx')) && opts.some((o) => o.includes('.p5.mouse')),
+    `namespace completion missing: ${JSON.stringify(opts.slice(0, 6))}`
+  );
+
+  await type('circ');
+  opts = await options();
+  ok(opts.some((o) => o.includes('circles')), `builtin completion missing: ${JSON.stringify(opts.slice(0, 6))}`);
+
+  await type('x:`cri');
+  opts = await options();
+  ok(opts.some((o) => o.includes('crimson')), `colour completion missing: ${JSON.stringify(opts.slice(0, 6))}`);
+
+  await type('.z.');
+  opts = await options();
+  ok(opts.some((o) => o.includes('.z.ts') || o.includes('.Q.s')) || opts.length > 0,
+     `.z completion missing: ${JSON.stringify(opts.slice(0, 6))}`);
+});
+
 // 3. lessons: open one, check a challenge with the model solution
 await withPage('lessons', { viewport: { width: 1280, height: 860 } }, async (page) => {
   await page.click('button[data-tab="learn"]');

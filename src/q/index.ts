@@ -27,7 +27,8 @@ export interface RunResult {
 }
 
 /** Run a script the way the q console does: print the value of each statement. */
-export function runConsole(ip: Interp, src: string, fmt: FmtOpts = DEFAULT_OPTS): RunResult {
+export function runConsole(ip: Interp, src: string, fmt?: FmtOpts): RunResult {
+  fmt = fmt ?? (ip.fmt as FmtOpts);
   const buf: string[] = [];
   const prevOut = ip.out;
   ip.out = (s) => buf.push(s);

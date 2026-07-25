@@ -262,9 +262,22 @@ export const LESSONS: Lesson[] = [
       s(
         'bg `#07090d\ni:til 40\ndraw ([] x:20+18*i; y:200+120*sin 0.3*i; r:4+3*i%10; fill:hsv[i%40;0.6;1])'
       ),
-      n(
-        'Shapes: `circle `ring `rect `box `line `tri `ngon `text `point `path `poly `arc `ellipse. Columns: x y r w h x2 y2 rot fill stroke sw a txt size pts n round.'
+      t(
+        'Writing the table out by hand gets old, so there are **constructors** for the common shapes. They return ordinary tables too, and `,` joins them into one scene:'
       ),
+      s(
+        'bg `#0b0e13\nu:.p5.w%5\ncircles[u*1 2;.p5.cy;30;`crimson`gold],rects[u*3;.p5.cy;70;50;`mint],tris[u*4;.p5.cy;34;`#b892ff]'
+      ),
+      n(
+        'Constructors: `circles[x;y;r]` `rings` `rects[x;y;w;h]` `squares[x;y;s]` `bars[x;y0;w;h]` `lines[x;y;x2;y2]` `tris[x;y;r]` `ngons[x;y;r;n]` `points[x;y]` `texts[x;y;txt]` `arcs[x;y;r;a0;a1]` `path[xs;ys]` `poly[xs;ys]`. Each takes an optional colour as a final argument.'
+      ),
+      t('And four combinators restyle a whole scene at once:'),
+      c('paint[circles[100 200;100;30];`gold]'),
+      n(
+        '`paint` sets fill · `outline` sets stroke · `fade` sets alpha · `spin` rotates · `nudge[scene;dx;dy]` moves. Shapes: `circle `ring `rect `box `line `tri `ngon `text `point `path `poly `arc `ellipse. Columns: x y r w h x2 y2 rot fill stroke sw a txt size pts n round.'
+      ),
+      t('For data, `plot` and `scatter` scale a vector to the canvas for you:'),
+      s('bg `#07090d\nwalk:sums (200?1.0)-0.5\nplot (walk; 20 mavg walk)'),
     ],
     challenge: {
       prompt: 'Draw a row of 10 circles of increasing radius. Store the scene in `scene` and draw it.',
@@ -362,6 +375,81 @@ export const LESSONS: Lesson[] = [
       check: '2 = step[step[init;0];0]',
       solution:
         'init:0\nstep:{[s;t] s+1}\nview:{[s] ([] x:.p5.cx; y:.p5.cy; r:1+s mod 100; fill:`gold)}',
+    },
+  },
+  {
+    id: 'input',
+    title: 'Mouse and keyboard',
+    blurb: 'Every input is just a q value you can read.',
+    blocks: [
+      t(
+        'While a sketch runs, the pointer lives in `.p5.mx` and `.p5.my`, and `.p5.mouse` is a dictionary of the lot:'
+      ),
+      c('.p5.mouse'),
+      s(
+        'bg `#0a0d13\nframe:{[t]\n  k:til 12;\n  p:polar[70;(2*pi*k%12)+t];\n  r:update x:.p5.mx+x, y:.p5.my+y, r:9, fill:hsv[k%12;0.7;1] from p;\n  r,texts[.p5.mx;.p5.my-100;"follow me";12] }'
+      ),
+      t(
+        'Keys are a symbol list in `.p5.keys`, and `pressed` asks about one (or several) directly. It is vectorised, so arithmetic on key state works:'
+      ),
+      c('pressed `left`right`space'),
+      n(
+        'Key names are what you would expect: `` `a `` .. `` `z ``, `` `left `` `` `right `` `` `up `` `` `down ``, `` `space ``, `` `enter ``, `` `shift ``. Typing in the editor never reaches the sketch — click the canvas first.'
+      ),
+      t('A steering demo: acceleration is the difference of two booleans.'),
+      s(
+        'bg `#07090d\ninit:`x`y`vx`vy!(.p5.cx;.p5.cy;0f;0f)\nstep:{[s;t]\n  s[`vx]:0.95*s[`vx]+0.5*pressed[`right]-pressed `left;\n  s[`vy]:0.95*s[`vy]+0.5*pressed[`down]-pressed `up;\n  s[`x]:(s[`x]+s`vx) mod .p5.w;\n  s[`y]:(s[`y]+s`vy) mod .p5.h;\n  s }\nview:{[s] circles[s`x;s`y;14;`gold],texts[80;24;"arrow keys";12] }'
+      ),
+      t('`.p5.down` is true while the pointer is held, `.p5.clicks` counts clicks, and `.p5.touch` is a table of active touches on a phone.'),
+    ],
+    challenge: {
+      prompt: 'Write `speed`, a function of no arguments returning 2 when space is held and 1 otherwise.',
+      starter: 'speed:{ }',
+      check: '1 = speed[]',
+      solution: 'speed:{1+pressed `space}',
+      hint: 'A boolean is a number: 1+pressed `space.',
+    },
+  },
+  {
+    id: 'timers',
+    title: 'Timers: \\t and .z.ts',
+    blurb: 'How kdb+ schedules work — and a second way to animate.',
+    blocks: [
+      t(
+        'Real kdb+ processes rarely have a draw loop. They set a **timer** and do periodic work in `.z.ts`. Both work here.'
+      ),
+      c('\\t 250        / fire every 250 milliseconds'),
+      c('.z.ti        / the current interval'),
+      t(
+        'Assign a function to `.z.ts` and it is called on every tick, with the current timestamp as its argument. Anything you `draw` stays on the canvas until the next tick.'
+      ),
+      s(
+        'bg `#0a0d13\nn:0\n\\t 200\n.z.ts:{[now]\n  n::n+1;\n  draw circles[.p5.cx;.p5.cy;20+8*n mod 9;hsv[0.05*n;0.6;1]],\n       texts[.p5.cx;.p5.cy+120;"tick ",string n;13] }'
+      ),
+      t(
+        'That is the shape of a tickerplant: a timer appends rows to a table, and everything downstream reads the table. Here the "downstream" is a chart.'
+      ),
+      s(
+        'bg `#0a0d13\ntrade:0#([] time:`time$(); px:`float$())\npx:100f\n\\t 100\n.z.ts:{[now]\n  px::px+0.5*(rand 1.0)-0.5;\n  `trade insert (`time$now; px);\n  if[300<count trade; trade::-300#trade];\n  draw plot trade`px }'
+      ),
+      t('The rest of the `.z` namespace is the clock, and it is always ticking:'),
+      c('.z.D'),
+      c('.z.T'),
+      n(
+        '`.z.p`/`.z.P` timestamp · `.z.t`/`.z.T` time · `.z.d`/`.z.D` date · `.z.z`/`.z.Z` datetime · `.z.n`/`.z.N` timespan. Lower case is UTC, upper case is local — exactly as in kdb+.'
+      ),
+      t('`\\t` with an expression instead of a number times it, in milliseconds:'),
+      c('\\t sum til 100000'),
+      t('Loops exist too, but you rarely want them. `do` and `while` are statements, not expressions:'),
+      c('i:0; do[5; i+:2]; i'),
+      c('i:0; while[i<10; i+:3]; i'),
+      n('Prefer the iterators — `10 f/ x` does something ten times and gives you the answer back.'),
+    ],
+    challenge: {
+      prompt: 'Set the timer to 500 milliseconds and confirm it with .z.ti.',
+      starter: '',
+      check: '500 = .z.ti',
+      solution: '\\t 500',
     },
   },
   {

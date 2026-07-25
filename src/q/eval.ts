@@ -83,6 +83,8 @@ export class Interp {
   globals = new Map<string, QValue>();
   builtins = new Map<string, Builtin>();
   out: (s: string) => void = () => {};
+  /** display options, changed by \P and \c */
+  fmt = { precision: 7, maxRows: 25, maxWidth: 200 };
   seed = 0x2f6e2b1;
   steps = 0;
   /** guard against runaway loops; reset for every top-level run and frame */
