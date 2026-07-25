@@ -114,6 +114,17 @@ class Parser {
     if (!this.at('nl')) return false;
     if (this.parenDepth > 0 || this.brackDepth > 0) return false;
     const prev = this.toks[this.p - 1];
+    if (this.braceDepth === 0) {
+      // in a script a newline ends the statement unless the next line is
+      // indented (or obviously continues the current one)
+      if (this.peek().v === true) return false;
+      let k = this.p;
+      while (this.toks[k] && this.toks[k].k === 'nl') k++;
+      const nxt = this.toks[k];
+      if (nxt && nxt.k === 'name' && (nxt.s === 'by' || nxt.s === 'from' || nxt.s === 'where'))
+        return false;
+      return true;
+    }
     if (!prev || !VALUE_END.has(prev.k)) return false;
     let q = this.p;
     while (this.toks[q] && this.toks[q].k === 'nl') q++;
@@ -121,6 +132,8 @@ class Parser {
     if (!nx) return true;
     if (nx.k === 'eof' || nx.k === 'rbrace' || nx.k === 'rbrack' || nx.k === 'rparen') return false;
     if (nx.k === 'op' || nx.k === 'adv' || nx.k === 'semi') return false;
+    // these words continue a qSQL statement and can never start one
+    if (nx.k === 'name' && (nx.s === 'by' || nx.s === 'from' || nx.s === 'where')) return false;
     return true;
   }
 
@@ -128,7 +141,7 @@ class Parser {
     const t = this.peek();
     if (t.k === 'eof' || t.k === 'semi' || t.k === 'rparen' || t.k === 'rbrack' || t.k === 'rbrace')
       return true;
-    if (t.k === 'nl') return this.nlSeparates() || this.braceDepth === 0;
+    if (t.k === 'nl') return this.nlSeparates();
     if (ctx.stopComma && t.k === 'op' && t.s === ',') return true;
     if (ctx.stopWords && t.k === 'name' && ctx.stopWords.has(t.s)) return true;
     return false;
@@ -139,7 +152,7 @@ class Parser {
     const start = this.peek().i;
     const xs: Node[] = [];
     for (;;) {
-      while (this.at('nl') && !this.nlSeparates() && this.braceDepth > 0) this.next();
+      while (this.at('nl') && !this.nlSeparates()) this.next();
       if (this.atStop(ctx)) break;
 
       // leading ':' -> return statement

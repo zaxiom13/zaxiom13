@@ -203,6 +203,15 @@ export function lex(src: string): Tok[] {
         continue;
       }
       let out = '';
+      // extension: `#rrggbb / `#rgb colour symbols (q itself has no such literal)
+      if (src[j] === '#') {
+        const m = /^#([0-9a-fA-F]{6}|[0-9a-fA-F]{3})(?![0-9a-zA-Z_])/.exec(src.slice(j));
+        if (m) {
+          push({ k: 'sym', s: src.slice(i, j + m[0].length), i, e: j + m[0].length, v: m[0] });
+          i = j + m[0].length;
+          continue;
+        }
+      }
       if (src[j] === ':') {
         out += ':';
         j++;
@@ -493,8 +502,8 @@ function scanNumber(src: string, i: number): NumRes | null {
     if (suf === 'b') {
       const digits = text.replace('-', '');
       if (/^[01]+$/.test(digits)) {
-        if (digits.length === 1) return { e: k + 1, t: -1, v: +digits };
-        return { e: k + 1, t: 1, v: digits.split('').map(Number) };
+        if (digits.length === 1) return { e: k + 1, t: -1, v: +digits, x: true };
+        return { e: k + 1, t: 1, v: digits.split('').map(Number), x: true };
       }
     } else if (suf === 'h') {
       t = -5;

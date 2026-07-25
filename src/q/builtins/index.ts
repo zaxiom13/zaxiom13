@@ -836,7 +836,7 @@ export function installBuiltins(ip: Interp) {
 
   def('?', [2, 3, 4], (ip2, a) => {
     if (a.length === 2) return findOrRoll(ip2, a[0], a[1]);
-    if (a.length === 3 && Math.abs(a[0].t) === 1) return vectorCond(ip2, a[0], a[1], a[2]);
+    if (a.length === 3 && !isTable(a[0])) return vectorCond(ip2, a[0], a[1], a[2]);
     return funcSelect(ip2, a);
   });
 
@@ -2062,15 +2062,41 @@ export function installBuiltins(ip: Interp) {
       const s = y.t === 10 ? ((y as QVector).v as string) : qToString(y);
       return listFrom(s.split('\n').map((p) => str(p)));
     }
-    if (isAtom(x) && Math.abs(x.t) === 7) {
+    if (isAtom(x) && (Math.abs(x.t) === 7 || Math.abs(x.t) === 6)) {
       const base = N(x);
-      let v = Math.trunc(N(y));
-      const out: number[] = [];
-      while (v > 0) {
-        out.unshift(v % base);
-        v = Math.floor(v / base);
-      }
-      return longvec(out.length ? out : [0]);
+      const enc = (n0: number): number[] => {
+        let v = Math.trunc(n0);
+        const out: number[] = [];
+        while (v > 0) {
+          out.unshift(v % base);
+          v = Math.floor(v / base);
+        }
+        return out.length ? out : [0];
+      };
+      if (isAtom(y)) return longvec(enc(N(y)));
+      return listFrom(items(y).map((e) => longvec(enc(N(e)))));
+    }
+    if (x.t === 7 || x.t === 6 || x.t === 5) {
+      // fixed-width encode: (8#2) vs n
+      const bases = nums(x);
+      const enc = (n0: number): number[] => {
+        let v = Math.trunc(n0);
+        const out = new Array(bases.length).fill(0);
+        for (let i = bases.length - 1; i >= 0; i--) {
+          const b = bases[i];
+          if (!b) {
+            out[i] = v;
+            v = 0;
+          } else {
+            out[i] = ((v % b) + b) % b;
+            v = Math.floor(v / b);
+          }
+        }
+        return out;
+      };
+      if (isAtom(y)) return longvec(enc(N(y)));
+      const rows = items(y).map((e) => enc(N(e)));
+      return listFrom(rows.map((r) => longvec(r)));
     }
     throw new QError('type');
   });
