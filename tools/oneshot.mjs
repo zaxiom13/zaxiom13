@@ -1,0 +1,12 @@
+import { chromium } from 'playwright';
+const id = process.argv[2] || 'flow';
+const wait = Number(process.argv[3] || 3000);
+const b = await chromium.launch();
+const p = await b.newPage({ viewport: { width: 900, height: 760 } });
+p.on('pageerror', (e) => console.log('ERR', e.message));
+await p.goto('http://localhost:4173/', { waitUntil: 'networkidle' });
+await p.selectOption('#examples', id);
+await p.waitForTimeout(wait);
+await (await p.$('#canvas-wrap')).screenshot({ path: `/tmp/gallery/${id}.png` });
+console.log(id, await p.evaluate(() => ({ fps: Math.round(window.qrt.fps), shapes: window.qrt.lastShapes })));
+await b.close();

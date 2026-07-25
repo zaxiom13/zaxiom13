@@ -1,8 +1,8 @@
 # q·sketch
 
 **Learn q/kdb+ by drawing with it.** A complete q interpreter written from scratch in
-TypeScript, wired to p5.js, running entirely in your browser — no server, no kdb+ licence,
-nothing to install.
+TypeScript, wired to a canvas, running entirely in your browser — no server, no kdb+
+licence, nothing to install, and 69 kB over the wire.
 
 > A scene is a table. Every row is a shape. Build pictures with `select`, `update` and `where`.
 
@@ -27,9 +27,11 @@ frame:{[t]
   from the [official kdb+ documentation](https://github.com/KxSystems/docs) is replayed
   against this interpreter and compared character-for-character with what KX prints.
   You can run it yourself from the **Parity** tab in the app.
-- **A p5.js bridge** (`src/sketch/`) — tables become scenes, four animation styles,
+- **A drawing layer** (`src/sketch/`) — tables become scenes, four animation styles,
   shape constructors, pointer/keyboard/touch input, Perlin noise, colour helpers, and a
-  tiny synth so a table can be a musical score.
+  tiny synth so a table can be a musical score. The canvas runtime is ~400 lines of
+  canvas-2D (`canvas.ts`); the q-facing namespace is still called `.p5` because it mirrors
+  the p5.js API that inspired it.
 - **The `.z` and `.Q` namespaces** — the clock, `\t`/`.z.ts` timers (kdb+'s own way of
   scheduling work), and the `.Q` utility belt.
 - **A complex-number namespace `.c`** — q has no complex type, so one is a `` `re`im ``
@@ -40,6 +42,21 @@ frame:{[t]
   each with runnable snippets and a checked challenge.
 - **A gallery** (`src/content/examples.ts`) — candlesticks, Conway's life, flow fields,
   phyllotaxis, rule 110, a sorting visualiser and more, all in q.
+
+## Load time
+
+The whole app is **69 kB gzipped** on first paint and works offline after that. On a
+throttled phone profile (Fast 3G, 4× CPU slowdown):
+
+| | first paint | first sketch drawn |
+| --- | --- | --- |
+| before | 1720 ms | 4054 ms |
+| now | 436 ms | 845 ms |
+
+Three things got it there: the p5 dependency was replaced by a small canvas-2D runtime
+(−343 kB gzip), CodeMirror is fetched *after* the first sketch renders (the editor starts as
+a plain textarea and upgrades itself in place), and the Learn/Reference/Parity panels are
+loaded when you open them. `npm run loadperf` measures it.
 
 ## Run it
 
@@ -159,7 +176,7 @@ The corpus is regenerated with `node tools/scrape-corpus.mjs /path/to/KxSystems/
 
 ```
 src/q/          interpreter      value.ts lexer.ts parser.ts eval.ts format.ts trace.ts builtins/
-src/sketch/     p5 bridge        runtime.ts scene.ts palette.ts audio.ts
+src/sketch/     drawing          runtime.ts canvas.ts scene.ts shapes.ts palette.ts audio.ts
 src/ui/         interface        editor.ts inspector.ts lessons-view.ts reference-view.ts parity-view.ts
 src/content/    course + gallery lessons.ts examples.ts reference-docs.ts
 tools/          parity harness, corpus scraper, screenshots
@@ -174,4 +191,6 @@ test/           vitest: interpreter goldens, every example, every lesson snippet
   test fixtures.
 - q and kdb+ are products of KX Systems. This project is an independent, unaffiliated
   reimplementation for teaching.
-- Drawing by [p5.js](https://p5js.org), editing by [CodeMirror 6](https://codemirror.net).
+- Editing by [CodeMirror 6](https://codemirror.net). The drawing API is modelled on
+  [p5.js](https://p5js.org), though the runtime here is a small canvas-2D layer of its own so
+  that the whole app is 69 kB.

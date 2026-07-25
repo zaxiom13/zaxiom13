@@ -165,11 +165,9 @@ const theme = EditorView.theme(
   { dark: true }
 );
 
-export interface QEditorOpts {
-  parent: HTMLElement;
-  doc: string;
-  onRun: () => void;
-  onChange?: (doc: string) => void;
+import type { CodeSource, CodeOpts } from './code-source';
+
+export interface QEditorOpts extends CodeOpts {
   interp: Interp;
 }
 
@@ -336,6 +334,23 @@ function describeType(v: QValue): string {
   if (v.t === 99) return `dict · ${count(v)} keys`;
   if (v.t < 0) return `${TYPE_NAME[Math.abs(v.t)] ?? '?'} atom`;
   return `${TYPE_NAME[Math.abs(v.t)] ?? 'list'} · ${count(v)}`;
+}
+
+/** the CodeMirror implementation of the CodeSource interface */
+export function createCodeMirrorSource(opts: QEditorOpts): CodeSource {
+  const view = createEditor(opts);
+  return {
+    get: () => view.state.doc.toString(),
+    set: (text) => setEditorText(view, text),
+    insert: (text) => insertAtCursor(view, text),
+    selectionOrLine() {
+      const sel = view.state.selection.main;
+      return sel.empty
+        ? view.state.doc.lineAt(sel.head).text
+        : view.state.sliceDoc(sel.from, sel.to);
+    },
+    focus: () => view.focus(),
+  };
 }
 
 export function setEditorText(view: EditorView, text: string) {

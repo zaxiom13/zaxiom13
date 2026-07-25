@@ -1,6 +1,7 @@
 // The bridge between the q interpreter and p5.js.
 
-import type p5 from 'p5';
+import { Sketch } from './canvas';
+type p5 = Sketch;
 import { Interp } from '../q/eval';
 import {
   QValue,
@@ -49,8 +50,6 @@ export interface RuntimeEvents {
 
 export class SketchRuntime {
   p: p5 | null = null;
-  private P5: any = null;
-  private loading: Promise<void> | null = null;
   ip: Interp;
   container: HTMLElement;
   events: RuntimeEvents;
@@ -144,33 +143,17 @@ export class SketchRuntime {
     this.keyHandlers = [down, up];
   }
 
-  /** p5 is ~900kB, so it is fetched in parallel with the first run. */
+  /** kept for symmetry with the old p5 loader: the canvas layer is built in */
   ready(): Promise<void> {
-    if (typeof document === 'undefined' || this.headless) return Promise.resolve();
-    if (!this.loading)
-      this.loading = import('p5').then((m) => {
-        this.P5 = (m as any).default ?? m;
-      });
-    return this.loading;
+    return Promise.resolve();
   }
 
   mount() {
     if (this.p || this.headless) return;
     if (typeof document === 'undefined') return; // headless (tests)
-    if (!this.P5) {
-      void this.ready().then(() => {
-        this.mount();
-        if (this.mode === 'static' || this.mode === 'idle') this.redrawStatic();
-        else {
-          this.running = true;
-          this.p?.loop();
-        }
-      });
-      return;
-    }
     const self = this;
     this.installKeys();
-    this.p = new this.P5((p: p5) => {
+    this.p = new Sketch((p: p5) => {
       p.setup = () => {
         const { w, h } = self.size();
         const c = p.createCanvas(w, h);

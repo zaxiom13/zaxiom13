@@ -380,9 +380,12 @@ n:500
 init:([] x:n?800f; y:n?600f)
 
 step:{[s;t]
-  a:(2*pi)*noise[0.004*s\`x;0.004*s\`y;0.15*t];
+  a:(2*pi)*noise[0.005*s\`x;0.005*s\`y;0.12*t];
   s:update x:x+2.2*cos a, y:y+2.2*sin a from s;
-  update x:x mod .p5.w, y:y mod .p5.h from s }
+  s:update x:x mod .p5.w, y:y mod .p5.h from s;
+  n:count s;
+  keep:0.985>n?1.0;                            / respawn a few each frame
+  update x:?[keep;x;n?.p5.w], y:?[keep;y;n?.p5.h] from s }
 
 view:{[s] update shape:\`circle, r:1.6,
           fill:hsv[0.55+0.15*x%.p5.w;0.5;1], a:0.8 from s }`,

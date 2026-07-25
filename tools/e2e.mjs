@@ -22,7 +22,9 @@ async function withPage(name, opts, fn) {
     if (m.type() === 'error') problems.push(`[${name}] console: ${m.text()}`);
   });
   await page.goto(url, { waitUntil: 'networkidle' });
-  await page.waitForTimeout(1200);
+  // the real editor arrives a moment after the first paint
+  await page.waitForSelector('#editor.ready', { timeout: 30000 }).catch(() => {});
+  await page.waitForTimeout(600);
   await fn(page);
   await ctx.close();
 }

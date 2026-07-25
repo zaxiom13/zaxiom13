@@ -1,7 +1,7 @@
 {
   "name": "q-sketch",
   "version": "0.1.0",
-  "description": "A client-side q/kdb+ interpreter wired to p5.js: learn q through creative coding.",
+  "description": "A client-side q/kdb+ interpreter wired to a canvas: learn q through creative coding.",
   "main": "index.js",
   "scripts": {
     "dev": "vite",
@@ -15,7 +15,8 @@
     "q": "tsx tools/q.mjs",
     "shots": "node tools/shot.mjs",
     "typecheck": "tsc --noEmit",
-    "e2e": "node tools/e2e.mjs"
+    "e2e": "node tools/e2e.mjs",
+    "loadperf": "node tools/loadperf.mjs"
   },
   "repository": {
     "type": "git",
@@ -46,8 +47,7 @@
     "@codemirror/view": "^6.43.6",
     "@lezer/highlight": "^1.2.3",
     "codemirror": "^6.0.2",
-    "lz-string": "^1.5.0",
-    "p5": "^2.3.1"
+    "lz-string": "^1.5.0"
   },
   "private": true,
   "type": "module"

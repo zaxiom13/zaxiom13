@@ -7,7 +7,7 @@
 // The renderer reads raw column arrays rather than boxed q values, so a scene
 // with tens of thousands of rows costs no allocation per row.
 
-import type p5 from 'p5';
+import type { Sketch as p5 } from './canvas';
 import {
   QValue,
   QTable,

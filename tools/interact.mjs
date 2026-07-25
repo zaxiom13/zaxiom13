@@ -12,10 +12,7 @@ await page.goto('http://localhost:4173/', { waitUntil: 'networkidle' });
 await page.waitForTimeout(1200);
 
 const setCode = async (code) => {
-  await page.evaluate((c) => {
-    const view = window.qeditor;
-    view.dispatch({ changes: { from: 0, to: view.state.doc.length, insert: c } });
-  }, code);
+  await page.evaluate((c) => window.qeditor.set(c), code);
   await page.click('#run');
   await page.waitForTimeout(900);
 };
