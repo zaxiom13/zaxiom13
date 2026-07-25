@@ -109,7 +109,7 @@ export function lex(src: string): Tok[] {
     const c = src[i];
 
     // whitespace
-    if (c === ' ' || c === '\t' || c === '\r') {
+    if (c === ' ' || c === '\t' || c === '\r' || c === '\u00a0') {
       i++;
       continue;
     }
@@ -151,7 +151,7 @@ export function lex(src: string): Tok[] {
         i = eol === -1 ? n : eol;
         continue;
       }
-      if (prev === ' ' || prev === '\t') {
+      if (prev === ' ' || prev === '\t' || prev === '\u00a0') {
         const eol = src.indexOf('\n', i);
         i = eol === -1 ? n : eol;
         continue;
@@ -281,6 +281,13 @@ export function lex(src: string): Tok[] {
       continue;
     }
 
+    // Slash in noun position is the over primitive, not an adverb.
+    if (c === '/') {
+      push({ k: 'op', s: c, i, e: i + 1 });
+      i++;
+      continue;
+    }
+
     if (c === '\\') {
       // a system command at the start of a line: \t 100  ->  system "t 100"
       const eol = src.indexOf('\n', i);
@@ -288,8 +295,12 @@ export function lex(src: string): Tok[] {
       if (atLineStart(i) && /^[a-zA-Z]/.test(line)) {
         push({ k: 'name', s: 'system', i, e: i + 1 });
         push({ k: 'str', s: JSON.stringify(line), i: i + 1, e: eol === -1 ? n : eol, v: line });
+        i = eol === -1 ? n : eol;
+      } else {
+        // Backslash in noun position is the scan primitive.
+        push({ k: 'op', s: c, i, e: i + 1 });
+        i++;
       }
-      i = eol === -1 ? n : eol;
       continue;
     }
 

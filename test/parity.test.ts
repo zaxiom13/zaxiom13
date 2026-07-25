@@ -34,7 +34,7 @@ sp:([] s:\`s1\`s1\`s1\`s1\`s4\`s1\`s2\`s2\`s3\`s4\`s4\`s1; p:\`p1\`p2\`p3\`p4\`p
 `;
 
 /** the interpreter must not regress below this share of scored examples */
-const THRESHOLD = 0.7;
+const THRESHOLD = 0.8;
 
 describe('kdb+ documentation parity', () => {
   it(`matches at least ${Math.round(THRESHOLD * 100)}% of scored examples`, () => {

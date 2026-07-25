@@ -480,7 +480,9 @@ export function shallowClone(x: QValue): QValue {
   }
   if (x.t >= 0 && x.t <= 19) {
     const v = x as QVector;
-    return vec(v.t, typeof v.v === 'string' ? v.v : (v.v as any[]).slice());
+    const out = vec(v.t, typeof v.v === 'string' ? v.v : (v.v as any[]).slice());
+    out.a = v.a;
+    return out;
   }
   return x;
 }

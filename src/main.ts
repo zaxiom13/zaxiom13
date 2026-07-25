@@ -171,7 +171,12 @@ async function upgradeEditor() {
     const m = await import('./ui/editor');
     const current = editor.get();
     $('#editor')!.innerHTML = '';
-    editor = m.createCodeMirrorSource({ ...editorOpts, doc: current, interp: ip });
+    editor = m.createCodeMirrorSource({
+      ...editorOpts,
+      doc: current,
+      interp: ip,
+      getInterp: () => ip,
+    });
     (window as any).qeditor = editor;
     $('#editor')!.classList.add('ready');
   } catch (e) {

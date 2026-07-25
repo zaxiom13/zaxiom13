@@ -198,7 +198,7 @@ export function fmtRaw(t: number, v: any, opts: FmtOpts, bare = false): string {
     case 12:
       return v === NULL_BIG ? '0Np' : v === INF_BIG ? '0Wp' : fmtTimestamp(v as bigint);
     case 13:
-      return v === NULL_INT ? '0Nm' : fmtMonth(v);
+      return v === NULL_INT ? (bare ? '' : '0Nm') : bare ? fmtMonth(v).slice(0, -1) : fmtMonth(v);
     case 14:
       return v === NULL_INT ? '0Nd' : fmtDate(v);
     case 15:
@@ -261,7 +261,7 @@ export function compact(x: QValue, opts: FmtOpts = DEFAULT_OPTS, bare = false): 
       if (v === -Infinity) return '-0w';
       return gfmt(v, opts.precision);
     });
-    const allInt = strs.every((s) => !/[.e]/.test(s));
+    const allInt = strs.every((s) => /^-?\d+$/.test(s));
     const suffix = bare ? '' : allInt ? (x.t === 9 ? 'f' : 'e') : x.t === 8 ? 'e' : '';
     const body = strs.join(' ');
     return (n === 1 ? ',' : '') + body + suffix;
@@ -331,9 +331,13 @@ export function fmtFunc(x: QValue, opts: FmtOpts): string {
 
 /** Cell text for a value inside a table/dict column. */
 export function cell(x: QValue, opts: FmtOpts): string {
-  if (isAtom(x)) return fmtRaw(x.t, (x as QAtom).v, opts, true);
+  if (isAtom(x)) {
+    if (isNullValue(x.t, (x as QAtom).v)) return '';
+    return fmtRaw(x.t, (x as QAtom).v, opts, true);
+  }
   if (isFunc(x)) return fmtFunc(x, opts);
-  if (x.t === 10) return '"' + escapeStr((x as QVector).v as string) + '"';
+  if (x.t === 10)
+    return (count(x) === 1 ? ',' : '') + '"' + escapeStr((x as QVector).v as string) + '"';
   if (isTable(x)) return '+' + compact(tableToDict(x as QTable), opts);
   if (isDict(x)) return compact(x, opts);
   return compact(x, opts, false);
@@ -353,7 +357,10 @@ export function displayLines(x: QValue, opts: FmtOpts = DEFAULT_OPTS): string[] 
   if (isFunc(x)) return [fmtFunc(x, opts)];
   if (x.t === -101) return ['::'];
   if (isAtom(x)) return [fmtRaw(x.t, (x as QAtom).v, opts)];
-  if (x.t > 0 && x.t <= 19) return [compact(x, opts)];
+  if (x.t > 0 && x.t <= 19) {
+    const body = compact(x, opts);
+    return [x.t === 10 && count(x) === 1 ? ',' + body : body];
+  }
   return s2Lines(x, opts);
 }
 

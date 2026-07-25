@@ -1,7 +1,16 @@
 // CodeMirror 6 editor with a q language mode.
 
 import { EditorState, Compartment } from '@codemirror/state';
-import { EditorView, keymap, highlightSpecialChars, drawSelection, lineNumbers, highlightActiveLine, placeholder as cmPlaceholder } from '@codemirror/view';
+import {
+  EditorView,
+  keymap,
+  highlightSpecialChars,
+  drawSelection,
+  lineNumbers,
+  highlightActiveLine,
+  hoverTooltip,
+  placeholder as cmPlaceholder,
+} from '@codemirror/view';
 import {
   defaultKeymap,
   history,
@@ -160,6 +169,66 @@ const theme = EditorView.theme(
     '.cm-tooltip.cm-tooltip-autocomplete > ul > li[aria-selected]': {
       backgroundColor: '#1f6feb44',
     },
+    '.cm-tooltip.cm-q-definition': {
+      maxWidth: 'min(430px, calc(100vw - 28px))',
+      overflow: 'hidden',
+      border: '1px solid rgba(94,194,255,0.3)',
+      borderRadius: '10px',
+      background: 'linear-gradient(145deg, #18212b 0%, #11171e 100%)',
+      boxShadow: '0 14px 36px rgba(0,0,0,0.42), inset 0 1px rgba(255,255,255,0.04)',
+    },
+    '.q-hover-card': {
+      display: 'grid',
+      gap: '8px',
+      boxSizing: 'border-box',
+      width: 'min(400px, calc(100vw - 56px))',
+      padding: '12px 14px 13px',
+      borderRadius: '9px',
+      background: 'linear-gradient(145deg, #18212b 0%, #11171e 100%)',
+      color: '#c9d6e2',
+      lineHeight: '1.45',
+    },
+    '.q-hover-head': {
+      display: 'flex',
+      alignItems: 'baseline',
+      gap: '9px',
+    },
+    '.q-hover-name': {
+      color: '#71d1ff',
+      fontSize: '14px',
+      fontWeight: '700',
+      letterSpacing: '-0.01em',
+    },
+    '.q-hover-kind': {
+      color: '#718396',
+      fontFamily: "'JetBrains Mono', monospace",
+      fontSize: '9px',
+      fontWeight: '700',
+      letterSpacing: '0.13em',
+      textTransform: 'uppercase',
+    },
+    '.q-hover-signature, .q-hover-source, .q-hover-example': {
+      overflowX: 'auto',
+      padding: '7px 9px',
+      borderRadius: '6px',
+      backgroundColor: 'rgba(5,10,15,0.62)',
+      color: '#f0c674',
+      fontFamily: "'JetBrains Mono', monospace",
+      fontSize: '11.5px',
+      whiteSpace: 'pre-wrap',
+    },
+    '.q-hover-description': {
+      color: '#b9c6d2',
+      fontFamily: "'JetBrains Mono', monospace",
+      fontSize: '11px',
+    },
+    '.q-hover-example': {
+      color: '#8edb9b',
+    },
+    '.q-hover-example::before': {
+      content: '"e.g.  "',
+      color: '#5e7183',
+    },
     '.cm-scroller': { overflow: 'auto', scrollbarWidth: 'thin' },
   },
   { dark: true }
@@ -169,6 +238,8 @@ import type { CodeSource, CodeOpts } from './code-source';
 
 export interface QEditorOpts extends CodeOpts {
   interp: Interp;
+  /** The runtime is replaced on every Run, so hover/completion can follow it. */
+  getInterp?: () => Interp;
 }
 
 const COLOR_NAMES = [
@@ -205,6 +276,7 @@ const SNIPPETS: { label: string; detail: string; body: string }[] = [
 ];
 
 export function createEditor(opts: QEditorOpts): EditorView {
+  const currentInterp = () => opts.getInterp?.() ?? opts.interp;
   const infoFor = (name: string, b: any): string => {
     const doc = DOCS[name] ?? {};
     const sig = doc.sig ?? b?.sig ?? '';
@@ -237,7 +309,8 @@ export function createEditor(opts: QEditorOpts): EditorView {
       apply?: string;
     }[] = [];
 
-    for (const [name, b] of opts.interp.builtins) {
+    const interp = currentInterp();
+    for (const [name, b] of interp.builtins) {
       if (!/^[.A-Za-z]/.test(name)) continue;
       const ns = name.startsWith('.');
       options.push({
@@ -248,9 +321,9 @@ export function createEditor(opts: QEditorOpts): EditorView {
         boost: ns ? -10 : name.length < 4 ? 5 : 0,
       });
     }
-    for (const [name, v] of opts.interp.globals) {
+    for (const [name, v] of interp.globals) {
       if (!/^[.A-Za-z]/.test(name)) continue;
-      if (opts.interp.builtins.has(name)) continue;
+      if (interp.builtins.has(name)) continue;
       options.push({
         label: name,
         type: v && v.t === 100 ? 'function' : v && (v.t === 98 || v.t === 99) ? 'class' : 'variable',
@@ -258,9 +331,9 @@ export function createEditor(opts: QEditorOpts): EditorView {
         boost: 20,
       });
     }
-    for (const [name, hook] of Object.entries(opts.interp.dynamicHooks)) {
+    for (const [name, hook] of Object.entries(interp.dynamicHooks)) {
       if (!/^[.A-Za-z]/.test(name)) continue;
-      if (opts.interp.globals.has(name)) continue;
+      if (interp.globals.has(name)) continue;
       options.push({
         label: name,
         type: 'constant',
@@ -293,6 +366,19 @@ export function createEditor(opts: QEditorOpts): EditorView {
       bracketMatching(),
       closeBrackets(),
       autocompletion({ override: [completions], activateOnTyping: true }),
+      hoverTooltip(
+        (view, pos) => {
+          const hit = hoverDefinitionAt(view.state.doc.toString(), pos, currentInterp());
+          if (!hit) return null;
+          return {
+            pos: hit.from,
+            end: hit.to,
+            above: true,
+            create: () => ({ dom: definitionTooltip(hit.definition) }),
+          };
+        },
+        { hoverTime: 240, hideOnChange: true }
+      ),
       qLanguage,
       syntaxHighlighting(qHighlight),
       theme,
@@ -326,6 +412,214 @@ export function createEditor(opts: QEditorOpts): EditorView {
   });
 
   return new EditorView({ state, parent: opts.parent });
+}
+
+export interface HoverDefinition {
+  name: string;
+  kind: 'builtin' | 'function';
+  signature?: string;
+  description: string;
+  example?: string;
+  source?: string;
+}
+
+export interface HoverDefinitionHit {
+  from: number;
+  to: number;
+  definition: HoverDefinition;
+}
+
+const IDENT_CHAR = /[A-Za-z0-9_.]/;
+const OP_CHAR = /[+\-*%&|^=<>!,#_$?@~:'\/\\]/;
+
+/**
+ * Resolve the q name/operator under a document position. Kept separate from
+ * CodeMirror so the behavior can be tested without a browser.
+ */
+export function hoverDefinitionAt(
+  doc: string,
+  position: number,
+  interp: Interp
+): HoverDefinitionHit | null {
+  if (!doc.length) return null;
+  let p = Math.max(0, Math.min(position, doc.length - 1));
+  if (!IDENT_CHAR.test(doc[p]) && !OP_CHAR.test(doc[p]) && p > 0) p--;
+  const family = IDENT_CHAR.test(doc[p]) ? IDENT_CHAR : OP_CHAR.test(doc[p]) ? OP_CHAR : null;
+  if (!family || !isCodePosition(doc, p)) return null;
+
+  let from = p;
+  let to = p + 1;
+  while (from > 0 && family.test(doc[from - 1])) from--;
+  while (to < doc.length && family.test(doc[to])) to++;
+  const name = doc.slice(from, to);
+  if (family === IDENT_CHAR && (!/^[A-Za-z.]/.test(name) || doc[from - 1] === '`')) return null;
+
+  const local = localFunctionDefinition(doc, name, position, interp);
+  if (local) return { from, to, definition: local };
+
+  const builtin = interp.builtins.get(name);
+  const ref = DOCS[name];
+  if (builtin || ref) {
+    return {
+      from,
+      to,
+      definition: {
+        name,
+        kind: 'builtin',
+        signature: ref?.sig ?? builtin?.sig,
+        description: plainText(ref?.doc ?? builtin?.doc ?? 'q builtin'),
+        example: (ref?.ex ?? builtin?.ex ?? [])[0],
+      },
+    };
+  }
+
+  const value = interp.globals.get(name);
+  if (value && value.t >= 100 && value.t <= 112) {
+    const source = value.t === 100 ? (value as any).src : undefined;
+    return {
+      from,
+      to,
+      definition: {
+        name,
+        kind: 'function',
+        signature: source ? lambdaSignature(name, source) : `${name} · function`,
+        description: 'Function defined in the live q session.',
+        source: source ? `${name}:${source}` : undefined,
+      },
+    };
+  }
+
+  return null;
+}
+
+function isCodePosition(doc: string, pos: number): boolean {
+  const lineStart = doc.lastIndexOf('\n', pos - 1) + 1;
+  let quoted = false;
+  let escaped = false;
+  for (let i = lineStart; i <= pos; i++) {
+    const c = doc[i];
+    if (quoted) {
+      if (escaped) escaped = false;
+      else if (c === '\\') escaped = true;
+      else if (c === '"') quoted = false;
+      if (i === pos) return false;
+      continue;
+    }
+    if (c === '"') {
+      quoted = true;
+      if (i === pos) return false;
+      continue;
+    }
+    if (c === '/' && (i === lineStart || /\s/.test(doc[i - 1]))) return false;
+  }
+  return !quoted;
+}
+
+function localFunctionDefinition(
+  doc: string,
+  name: string,
+  hoverPos: number,
+  interp: Interp
+): HoverDefinition | null {
+  if (!/^[A-Za-z.][A-Za-z0-9_.]*$/.test(name)) return null;
+  const pattern = new RegExp(
+    `(?:^|[;\\n])\\s*${escapeRegex(name)}\\s*(?:::|:)\\s*`,
+    'g'
+  );
+  const matches: RegExpExecArray[] = [];
+  let match: RegExpExecArray | null;
+  while ((match = pattern.exec(doc))) matches.push(match);
+  if (!matches.length) return null;
+  const chosen =
+    [...matches].reverse().find((m) => m.index <= hoverPos) ?? matches[0];
+  const start = chosen.index + chosen[0].length;
+  const source = readDefinitionExpression(doc, start).trim();
+  if (!source) return null;
+  const live = interp.globals.get(name);
+  const functionLike =
+    source.startsWith('{') ||
+    /(?:[+\-*%&|^=<>!,#_$?@~:'\/\\]|[A-Za-z.][A-Za-z0-9_.]*)$/.test(source) &&
+      !!live &&
+      live.t >= 100 &&
+      live.t <= 112;
+  if (!functionLike) return null;
+  return {
+    name,
+    kind: 'function',
+    signature: source.startsWith('{') ? lambdaSignature(name, source) : `${name} · function`,
+    description: 'Function defined in this sketch.',
+    source: `${name}:${source}`,
+  };
+}
+
+function readDefinitionExpression(doc: string, start: number): string {
+  if (doc[start] !== '{') {
+    const end = doc.slice(start).search(/[;\n]/);
+    return doc.slice(start, end < 0 ? doc.length : start + end);
+  }
+  let depth = 0;
+  let quoted = false;
+  let escaped = false;
+  for (let i = start; i < doc.length; i++) {
+    const c = doc[i];
+    if (quoted) {
+      if (escaped) escaped = false;
+      else if (c === '\\') escaped = true;
+      else if (c === '"') quoted = false;
+      continue;
+    }
+    if (c === '"') quoted = true;
+    else if (c === '{') depth++;
+    else if (c === '}' && --depth === 0) return doc.slice(start, i + 1);
+  }
+  return doc.slice(start);
+}
+
+function lambdaSignature(name: string, source: string): string {
+  const explicit = /^\{\s*\[([^\]]*)\]/.exec(source);
+  if (explicit) {
+    const params = explicit[1].split(';').map((s) => s.trim()).filter(Boolean);
+    return params.length ? `${name}[${params.join(';')}]` : `${name}[]`;
+  }
+  const used = ['x', 'y', 'z'].filter((param) =>
+    new RegExp(`\\b${param}\\b`).test(source)
+  );
+  return used.length ? `${name}[${used.join(';')}]` : `${name}[]`;
+}
+
+function plainText(text: string): string {
+  return text.replace(/\*\*/g, '').replace(/`([^`]*)`/g, '$1');
+}
+
+function escapeRegex(text: string): string {
+  return text.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
+function definitionTooltip(def: HoverDefinition): HTMLElement {
+  const card = document.createElement('div');
+  card.className = 'cm-q-definition q-hover-card';
+  const head = document.createElement('div');
+  head.className = 'q-hover-head';
+  const name = document.createElement('span');
+  name.className = 'q-hover-name';
+  name.textContent = def.name;
+  const kind = document.createElement('span');
+  kind.className = 'q-hover-kind';
+  kind.textContent = def.kind;
+  head.append(name, kind);
+  card.append(head);
+  if (def.signature) card.append(tooltipRow('q-hover-signature', def.signature));
+  card.append(tooltipRow('q-hover-description', def.description));
+  if (def.source) card.append(tooltipRow('q-hover-source', def.source));
+  if (def.example) card.append(tooltipRow('q-hover-example', def.example));
+  return card;
+}
+
+function tooltipRow(className: string, text: string): HTMLElement {
+  const row = document.createElement('div');
+  row.className = className;
+  row.textContent = text;
+  return row;
 }
 
 function describeType(v: QValue): string {

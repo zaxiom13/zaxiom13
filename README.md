@@ -181,7 +181,7 @@ sketch, so you can pause it and poke at its state.
 The **Parity** tab answers that honestly, in your browser. Of the 2203 documentation
 examples that ship with the app (the `ref/` and `basics/` pages):
 
-- **75.9%** reproduce kdb+'s printed output character-for-character
+- **80.7%** reproduce kdb+'s printed output character-for-character
 - 224 need data we don't ship and are reported separately, never counted as passes
 - the rest are listed with a diff, so nothing is swept under the rug
 

@@ -298,6 +298,18 @@ export class Interp {
     while (i >= 0) {
       const v = ev(i);
       if (isFunc(v)) {
+        if (isFunc(val) && this.rankOf(v) >= 2) {
+          if (i > 0 && this.rankOf(v) >= 2 && !(xs[i] as any).paren) {
+            const lv = ev(i - 1);
+            const projected = { t: 104, f: v, args: [lv, null] } as QProj;
+            val = { t: 105, fns: [projected, val] } as QComp;
+            i -= 2;
+          } else {
+            val = { t: 105, fns: [v, val] } as QComp;
+            i--;
+          }
+          continue;
+        }
         // q applies a function infix only when it is (at least) binary and
         // not parenthesised (parentheses make it a noun)
         if (i > 0 && this.rankOf(v) >= 2 && !(xs[i] as any).paren) {
@@ -413,6 +425,18 @@ export class Interp {
         return this.applyIter(fn as QIter, args);
       default:
         if (fn.t === -101) return args.length === 1 ? args[0] : fromItems(args);
+        if (
+          fn.t === 0 &&
+          (fn as QVector).v.some((v: QValue) => v.t === -101)
+        ) {
+          let ai = 0;
+          const out = (fn as QVector).v.map((v: QValue) =>
+            v.t === -101 && ai < args.length ? args[ai++] : v
+          );
+          if (ai !== args.length || out.some((v: QValue) => v.t === -101))
+            throw new QError('rank');
+          return fromItems(out);
+        }
         if (fn.t === -11) {
           // a symbol names a function: `f[1;2]
           const target = this.resolve((fn as QAtom).v, { locals: null });
@@ -487,7 +511,7 @@ export class Interp {
       const out: QValue[] = new Array(n);
       for (let i = 0; i < n; i++) out[i] = this.apply(f, [at(x, i)]);
       if (isDict(x)) return dict((x as QDict).k, fromItems(out));
-      return fromItems(out);
+      return unifyItems(out);
     }
     // each-both / general each over conforming arguments
     let n = -1;
@@ -506,7 +530,7 @@ export class Interp {
         args.map((a) => (isAtom(a) || isFunc(a) ? a : at(a, i)))
       );
     }
-    return fromItems(out);
+    return unifyItems(out);
   }
 
   eachLeft(f: QValue, args: QValue[]): QValue {
@@ -532,6 +556,13 @@ export class Interp {
       seed = args[0];
       x = args[1];
     } else x = args[0];
+    if (isTable(x)) {
+      const t = x as QTable;
+      return table(
+        t.c.slice(),
+        t.v.map((c) => this.eachPrior(f, seed === null ? [c] : [seed!, c], scan))
+      );
+    }
     const n = count(x);
     const out: QValue[] = [];
     for (let i = 0; i < n; i++) {
@@ -541,7 +572,8 @@ export class Interp {
       out.push(prev === null ? cur : this.apply(f, [cur, prev]));
     }
     if (n === 0) return isAtom(x) ? x : fromItems([]);
-    return fromItems(out);
+    const values = fromItems(out);
+    return isDict(x) ? dict((x as QDict).k, values) : values;
   }
 
   over(f: QValue, args: QValue[], scan: boolean): QValue {
@@ -1384,6 +1416,30 @@ export function selectRows(col: QValue, rows: number[]): QValue {
     return listFrom(rows.map((r) => arr[r]));
   }
   return col;
+}
+
+/** q promotes a homogeneous list of record dictionaries to a table. */
+function unifyItems(xs: QValue[]): QValue {
+  if (
+    xs.length > 0 &&
+    xs.every((x) => isDict(x) && !isKeyedTable(x) && (x as QDict).k.t === 11)
+  ) {
+    const firstDict = xs[0] as QDict;
+    const names = ((firstDict.k as QVector).v as string[]).slice();
+    const conform = xs.every((x) => {
+      const keys = ((x as QDict).k as QVector).v as string[];
+      return keys.length === names.length && keys.every((k, i) => k === names[i]);
+    });
+    if (conform) {
+      return table(
+        names,
+        names.map((_, ci) =>
+          fromItems(xs.map((x) => at((x as QDict).v, ci)))
+        )
+      );
+    }
+  }
+  return fromItems(xs);
 }
 
 export function keyStr(x: QValue): string {
