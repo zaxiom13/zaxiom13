@@ -130,6 +130,7 @@ function isNullAt(t: number, v: any): boolean {
 // ------------------------------------------------------------------ install
 
 export function installBuiltins(ip: Interp) {
+  let export_extract: (nm: string, y: QValue) => QValue;
   const def = (
     name: string,
     ranks: number[],
@@ -274,6 +275,7 @@ export function installBuiltins(ip: Interp) {
   }
 
   def('~', [2], (ip2, [x, y]) => bool(matchValues(x, y)));
+  def(':', [1, 2], (ip2, a) => (a.length === 1 ? a[0] : a[1]));
   def('not', [1], (ip2, [x]) => notV(ip2, x));
   def('neg', [1], (ip2, [x]) => atomic2(ip2, long(0), x, subSpec as any));
   def('abs', [1], (ip2, [x]) =>
@@ -873,6 +875,8 @@ export function installBuiltins(ip: Interp) {
   }
 
   function rollDeal(ip2: Interp, n: number, y: QValue): QValue {
+    if (n === NULL_LONG && isAtom(y) && Math.abs(y.t) === 7) n = -Math.trunc(N(y));
+    if (n === NULL_LONG) n = -count(isAtom(y) ? enlist(y) : y);
     const deal = n < 0;
     const cnt = checkLen(Math.abs(n));
     const rnd = () => ip2Rand(ip2);
@@ -1025,6 +1029,43 @@ export function installBuiltins(ip: Interp) {
     return compact(x, DEFAULT_OPTS, true);
   }
 
+  const EXTRACTORS: Record<string, (t: number, v: any) => number> = {
+    year: (t, v) => ymdFromDays(daysOf(t, v))[0],
+    mm: (t, v) => ymdFromDays(daysOf(t, v))[1],
+    dd: (t, v) => ymdFromDays(daysOf(t, v))[2],
+    hh: (t, v) => Math.floor(msOfDay(t, v) / 3600000),
+    uu: (t, v) => Math.floor(msOfDay(t, v) / 60000) % 60,
+    ss: (t, v) => Math.floor(msOfDay(t, v) / 1000) % 60,
+    week: (t, v) => Math.floor((daysOf(t, v) + 3) / 7),
+  };
+
+  function daysOf(t: number, v: any): number {
+    const a = Math.abs(t);
+    if (a === 14) return v as number;
+    if (a === 13) return daysFromMonth(v as number);
+    if (a === 12) return Math.floor(Number(v as bigint) / 86400000000000);
+    if (a === 15) return Math.floor(v as number);
+    return 0;
+  }
+  function msOfDay(t: number, v: any): number {
+    const a = Math.abs(t);
+    if (a === 19) return v as number;
+    if (a === 18) return (v as number) * 1000;
+    if (a === 17) return (v as number) * 60000;
+    if (a === 12 || a === 16) {
+      const ns = Number(v as bigint) % 86400000000000;
+      return Math.floor(((ns % 86400000000000) + 86400000000000) % 86400000000000 / 1e6);
+    }
+    if (a === 15) return Math.round(((v as number) % 1) * 86400000);
+    return 0;
+  }
+
+  /** `hh$x, `dd$x ... extract a component of a temporal value */
+  export_extract = (nm: string, y: QValue): QValue => {
+    const f = EXTRACTORS[nm];
+    return atomic1(ip, y, (t, v) => [6, isNullValue(Math.abs(t), v) ? NULL_INT : f(t, v)]);
+  };
+
   function castValue(ip2: Interp, x: QValue, y: QValue): QValue {
     if (!isAtom(x)) {
       const specs = items(x);
@@ -1037,6 +1078,7 @@ export function installBuiltins(ip: Interp) {
     if (nameOrChar === null) throw new QError('type');
     const parseMode = x.t === -10 && /[A-Z]/.test(nameOrChar);
     if (nameOrChar === '') return castTo(11, y);
+    if (EXTRACTORS[nameOrChar]) return export_extract(nameOrChar, y);
     const tname = nameOrChar.toLowerCase();
     const t = typeNumFromName(tname);
     if (parseMode) return parseFromString(t, y);
@@ -2415,8 +2457,11 @@ export function installBuiltins(ip: Interp) {
 
   def('cast', [2], (ip2, [x, y]) => castValue(ip2, x, y));
 
-  // exported helper used by the p5 bridge
+  // helpers used by the evaluator and the p5 bridge
   (ip as any).castTo = castTo;
+  (ip as any).temporalPart = (nm: string, y: QValue) =>
+    EXTRACTORS[nm] ? export_extract(nm, y) : null;
+  (ip as any).castByName = (nm: string, y: QValue) => castTo(typeNumFromName(nm), y);
   (ip as any).joinValues = (x: QValue, y: QValue) => join(ip, x, y);
   (ip as any).groupValues = (x: QValue) => group(ip, x);
 }

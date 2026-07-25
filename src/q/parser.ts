@@ -144,8 +144,19 @@ class Parser {
 
       // leading ':' -> return statement
       if (xs.length === 0 && this.at('op', ':')) {
+        const save = this.p;
         this.next();
-        if (this.atStop(ctx)) return { k: 'ret', v: null, i: start };
+        if (this.at('adv')) {
+          this.p = save;
+          xs.push(this.term(ctx));
+          continue;
+        }
+        if (this.atStop(ctx)) {
+          // a bare ":" is the assign/replace verb (used by amend)
+          this.p = save;
+          xs.push(this.term(ctx));
+          continue;
+        }
         return { k: 'ret', v: this.expr(ctx), i: start };
       }
       if (xs.length === 0 && this.at('op', "'") && this.peek(1).k !== 'eof') {
@@ -367,7 +378,13 @@ class Parser {
     const cols: ColSpec[] = [];
     this.skipNl();
     while (!this.at('rparen')) {
-      cols.push(this.colSpec({ stopComma: true }));
+      if (this.at('op', ',') || this.at('semi')) {
+        this.next();
+        this.skipNl();
+        continue;
+      }
+      const spec = this.colSpec({ stopComma: true });
+      if (spec.name !== null || spec.e.k !== 'nil') cols.push(spec);
       this.skipNl();
       if (this.at('op', ',') || this.at('semi')) {
         this.next();

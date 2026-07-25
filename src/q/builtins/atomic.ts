@@ -41,7 +41,6 @@ export function arithType(ta: number, tb: number): number {
     b = Math.abs(tb);
   const ra = RANK[a],
     rb = RANK[b];
-  if (a === 10 && b === 10) return 10;
   if (ra !== undefined && rb !== undefined) {
     const t = ra > rb ? a : b;
     return t === 1 || t === 4 ? 7 : t; // booleans and bytes widen to long
@@ -289,10 +288,8 @@ export function compareValues(x: QValue, y: QValue): number {
 /** total order across mixed values (used by asc/desc on general lists) */
 export function compareAny(x: QValue, y: QValue): number {
   if (isAtom(x) && isAtom(y)) {
-    if (x.t !== y.t) {
-      const bothNum = numericish(x.t) && numericish(y.t);
-      if (!bothNum) return x.t === y.t ? 0 : x.t < y.t ? 1 : -1;
-    }
+    // q orders mixed lists by datatype first
+    if (x.t !== y.t) return Math.abs(x.t) < Math.abs(y.t) ? -1 : 1;
     return compareValues(x, y);
   }
   if (isAtom(x)) return -1;

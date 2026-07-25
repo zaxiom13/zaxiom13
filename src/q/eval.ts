@@ -29,6 +29,7 @@ import {
   isDict,
   isFunc,
   isKeyedTable,
+  TYPE_NAME,
   matchValues,
   nullAtomOf,
   nullValue,
@@ -100,7 +101,12 @@ export class Interp {
   run(src: string): QValue {
     const stmts = parse(src);
     let v: QValue = UNIT;
-    for (const s of stmts) v = this.evalNode(s, { locals: null });
+    try {
+      for (const s of stmts) v = this.evalNode(s, { locals: null });
+    } catch (e) {
+      if (e instanceof ReturnSignal) return e.v;
+      throw e;
+    }
     return v;
   }
 
@@ -108,7 +114,14 @@ export class Interp {
   runAll(src: string): { node: Node; value: QValue }[] {
     const stmts = parse(src);
     const out: { node: Node; value: QValue }[] = [];
-    for (const s of stmts) out.push({ node: s, value: this.evalNode(s, { locals: null }) });
+    for (const s of stmts) {
+      try {
+        out.push({ node: s, value: this.evalNode(s, { locals: null }) });
+      } catch (e) {
+        if (e instanceof ReturnSignal) out.push({ node: s, value: e.v });
+        else throw e;
+      }
+    }
     return out;
   }
 
@@ -181,7 +194,53 @@ export class Interp {
     if (g !== undefined) return g;
     const dyn = this.dynamic(name);
     if (dyn !== undefined) return dyn;
+    const dotted = this.dottedAccess(name, f);
+    if (dotted !== undefined) return dotted;
     throw new QError(name, `Undefined name: ${name}`);
+  }
+
+  /** time.minute, dict.key, table.col ... */
+  dottedAccess(name: string, f: Frame): QValue | undefined {
+    const parts = name.split('.');
+    if (parts.length < 2) return undefined;
+    let base: QValue | undefined;
+    let i = 0;
+    for (; i < parts.length - 1; i++) {
+      const head = parts.slice(0, i + 1).join('.');
+      if (f.locals && f.locals.has(head)) {
+        base = f.locals.get(head);
+        break;
+      }
+      if (this.globals.has(head)) {
+        base = this.globals.get(head);
+        break;
+      }
+    }
+    if (base === undefined) return undefined;
+    for (let j = i + 1; j < parts.length; j++) {
+      const part = parts[j];
+      const anyIp = this as any;
+      const t = Math.abs(base!.t);
+      if (t >= 12 && t <= 19) {
+        const tp = anyIp.temporalPart?.(part, base);
+        if (tp) {
+          base = tp;
+          continue;
+        }
+        try {
+          base = anyIp.castByName(part, base);
+          continue;
+        } catch {
+          return undefined;
+        }
+      }
+      try {
+        base = this.index1(base!, atom(-11, part));
+      } catch {
+        return undefined;
+      }
+    }
+    return base;
   }
 
   dynamicHooks: Record<string, () => QValue> = {};
@@ -263,7 +322,7 @@ export class Interp {
   }
 
   applyMaybeProject(fn: QValue, args: (QValue | null)[]): QValue {
-    if (args.some((a) => a === null || (a && a.t === -101 && isFunc(fn)))) {
+    if (args.some((a) => a === null)) {
       if (!isFunc(fn)) {
         // elided index means "all"
         return this.index(fn, args.map((a) => (a === null ? UNIT : a)));
@@ -475,7 +534,17 @@ export class Interp {
         // reduce
         const n = count(x);
         if (isAtom(x)) return x;
-        if (n === 0) return this.reduceIdentity(f);
+        if (n === 0) return this.reduceIdentity(f, x);
+        const ident = this.reduceIdentity(f, x, true);
+        if (ident) {
+          let acc2 = ident;
+          const outs2: QValue[] = [];
+          for (let i = 0; i < n; i++) {
+            acc2 = this.apply(f, [acc2, at(x, i)]);
+            if (scan) outs2.push(acc2);
+          }
+          return scan ? fromItems(outs2) : acc2;
+        }
         let acc = at(x, 0);
         const outs: QValue[] = scan ? [acc] : [];
         for (let i = 1; i < n; i++) {
@@ -504,9 +573,9 @@ export class Interp {
       }
       if (rank === 1) {
         if (a.t === -7 || a.t === -6 || a.t === -5) {
-          // do-n times
+          // do: apply f n times, the scan keeps the starting value
           let cur = x;
-          const outs: QValue[] = [];
+          const outs: QValue[] = [cur];
           const n = (a as QAtom).v as number;
           for (let i = 0; i < n; i++) {
             cur = this.apply(f, [cur]);
@@ -516,9 +585,9 @@ export class Interp {
           return scan ? fromItems(outs) : cur;
         }
         if (isFunc(a)) {
-          // while: pred f/ x
+          // while: keep applying f while the predicate holds
           let cur = x;
-          const outs: QValue[] = [];
+          const outs: QValue[] = [cur];
           for (let i = 0; i < 1000000; i++) {
             const c = this.apply(a, [cur]);
             if (!truthy(c)) break;
@@ -558,13 +627,20 @@ export class Interp {
     return scan ? fromItems(outs) : acc;
   }
 
-  reduceIdentity(f: QValue): QValue {
-    const nm = (f as QPrim).name;
+  /**
+   * The identity element of a reduction. `seedOnly` asks for an element that
+   * must seed the fold (join is the only one), otherwise the value returned
+   * for an empty argument.
+   */
+  reduceIdentity(f: QValue, x?: QValue, seedOnly = false): QValue | null {
+    const nm = f.t === 101 || f.t === 102 ? (f as QPrim).name : null;
+    if (nm === ',') return NIL;
+    if (seedOnly) return null;
     if (nm === '+' || nm === '-') return long(0);
     if (nm === '*' || nm === '%') return long(1);
     if (nm === '|') return long(0);
     if (nm === '&') return long(1);
-    if (nm === ',') return NIL;
+    if (nm === null) return x ?? NIL; // lambdas: an empty argument passes through
     return long(0);
   }
 
@@ -596,6 +672,10 @@ export class Interp {
   index1(x: QValue, i: QValue): QValue {
     if (i.t === -101) return x;
     if (isFunc(x)) return this.apply(x, [i]);
+    if (isDict(i) && !isKeyedTable(i) && !isDict(x) && !isTable(x)) {
+      const di = i as QDict;
+      return dict(di.k, this.index1(x, di.v));
+    }
     if (isKeyedTable(x)) {
       const kt = x as QDict;
       const keyT = kt.k as QTable;
@@ -901,6 +981,14 @@ export class Interp {
 
   evalQsql(n: Node & { k: 'qsql' }, f: Frame): QValue {
     let src = this.evalNode(n.from, f);
+    if (src.t === -11 && (n.op === 'update' || n.op === 'delete')) {
+      const nm = (src as QAtom).v as string;
+      const tbl0 = this.resolve(nm, f);
+      const res = this.evalQsql({ ...n, from: { k: 'lit', v: tbl0, i: n.i } } as any, f);
+      this.globals.set(nm, res);
+      return sym(nm);
+    }
+    if (src.t === -11) src = this.resolve((src as QAtom).v as string, f);
     let tbl: QTable;
     let keyCols: string[] = [];
     if (isKeyedTable(src)) {
@@ -1290,7 +1378,11 @@ export function deriveName(e: Node, i: number): string {
 }
 
 function nameOf(e: Node): string | null {
-  if (e.k === 'name') return e.n === 'i' ? 'x' : e.n;
+  if (e.k === 'name') {
+    if (e.n === 'i') return 'x';
+    const parts = e.n.split('.');
+    return parts[parts.length - 1];
+  }
   if (e.k === 'seq' && e.xs.length === 2) return nameOf(e.xs[1]);
   if (e.k === 'call' && e.args.length === 1 && e.args[0]) return nameOf(e.args[0]!);
   if (e.k === 'adv') return null;

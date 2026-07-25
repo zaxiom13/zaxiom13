@@ -265,7 +265,8 @@ export function compact(x: QValue, opts: FmtOpts = DEFAULT_OPTS, bare = false): 
   }
   const strs = arr.map((v) => fmtRaw(x.t, v, opts, true));
   const suffix = bare ? '' : x.t === 5 ? 'h' : x.t === 6 ? 'i' : '';
-  return (n === 1 ? ',' : '') + strs.join(' ') + suffix;
+  const attr = !bare && (x as QVector).a ? '`' + (x as QVector).a + '#' : '';
+  return attr + (n === 1 ? ',' : '') + strs.join(' ') + suffix;
 }
 
 function typeNameOf(t: number): string {
