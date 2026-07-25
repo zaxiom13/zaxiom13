@@ -217,9 +217,12 @@ async function run() {
     if (e instanceof QError && e.hint) println(e.hint, 'hint');
   }
   const ms = performance.now() - t0;
+  // the program already handed this value to draw, so do not also print it
+  const alreadyDrawn = !!last && runtime.lastDrawn === last;
   runtime.start();
   // a scene table left at the end of the program is drawn for you
-  const drawn = ok && last && runtime.mode === 'idle' && runtime.autoDraw(last);
+  const drawn =
+    alreadyDrawn || (ok && !!last && runtime.mode === 'idle' && runtime.autoDraw(last));
   if (drawn) println(`drew ${count(last!)} shapes`, 'note');
   else if (ok && lastPrintable && last) println(display(last), 'out');
   updateBadges();
