@@ -66,6 +66,7 @@ export class SketchRuntime {
   private errorShown = false;
   /** p5 creates the canvas asynchronously; nothing may paint before that */
   private canvasReady = false;
+  private pointerSeen = false;
 
   /** headless runtimes (lesson sessions, tests) never touch the canvas */
   headless: boolean;
@@ -294,7 +295,14 @@ export class SketchRuntime {
     g.set('.p5.h', float(p.height));
     g.set('.p5.cx', float(p.width / 2));
     g.set('.p5.cy', float(p.height / 2));
-    const inside = p.mouseX >= 0 && p.mouseY >= 0 && p.mouseX <= p.width && p.mouseY <= p.height;
+    // before the pointer has ever been over the canvas, pretend it is centred
+    if (p.mouseX !== 0 || p.mouseY !== 0) this.pointerSeen = true;
+    const inside =
+      this.pointerSeen &&
+      p.mouseX >= 0 &&
+      p.mouseY >= 0 &&
+      p.mouseX <= p.width &&
+      p.mouseY <= p.height;
     g.set('.p5.mx', float(inside ? p.mouseX : p.width / 2));
     g.set('.p5.my', float(inside ? p.mouseY : p.height / 2));
     g.set('.p5.down', bool(!!(p as any).mouseIsPressed));
@@ -687,8 +695,8 @@ export class SketchRuntime {
       '.p5.h': () => float(this.p?.height ?? this.size().h),
       '.p5.cx': () => float((this.p?.width ?? this.size().w) / 2),
       '.p5.cy': () => float((this.p?.height ?? this.size().h) / 2),
-      '.p5.mx': () => float(this.p?.mouseX ?? 0),
-      '.p5.my': () => float(this.p?.mouseY ?? 0),
+      '.p5.mx': () => float(this.pointerSeen ? this.p?.mouseX ?? 0 : (this.p?.width ?? 800) / 2),
+      '.p5.my': () => float(this.pointerSeen ? this.p?.mouseY ?? 0 : (this.p?.height ?? 600) / 2),
       '.p5.down': () => bool(!!(this.p as any)?.mouseIsPressed),
       '.p5.touch': () => table(['x', 'y', 'id'], [floatvec([]), floatvec([]), longvec([])]),
       pi: () => float(Math.PI),

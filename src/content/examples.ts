@@ -25,8 +25,8 @@ scene:([]
   x:u*1 2 3 4 2.5;
   y:.p5.cy*0.85 0.85 0.85 0.85 1.6;
   r:0.28*u;
-  w:0 0 0 (0.55*u) 0;
-  h:0 0 0 (0.4*u) 0;
+  w:0.55*u;
+  h:0.4*u;
   fill:\`#ff6b6b\`#ffd93d\`#6bcb77\`#4d96ff\`white;
   txt:("";"";"";"";"tables are pictures"))
 
@@ -136,9 +136,12 @@ N:36
 init:(N;N)#(N*N)?0 0 0 1b
 
 shift:{[m;dx;dy] (dy rotate) each dx rotate m}
-step:{[s;t]
+gen:{[s]
   nbr:sum shift[s;;] ./: (1 1;1 0;1 -1;0 1;0 -1;-1 1;-1 0;-1 -1);
   (nbr=3)|s&nbr=2 }
+
+/ ten generations a second, not sixty
+step:{[s;t] $[0=.p5.f mod 6; gen s; s] }
 
 view:{[s]
   g:grid[N;N];
@@ -186,8 +189,8 @@ rule:110
 
 rowStep:{[r] rule[7-2 sv/: flip (-1 rotate r;r;1 rotate r)]}
 rule:reverse 8#(8#2)vs rule
-r0:W#0b
-r0[W div 2]:1b
+r0:W#0
+r0[W div 2]:1
 rows:rowStep\\[70;r0]
 
 cell:.p5.w%W
@@ -204,7 +207,7 @@ select shape:\`rect, x:cell*0.5+x, y:cell*0.5+y, w:cell, h:cell, fill:\`#c8f7c5 
 n:60
 init:n?100f
 
-/ one bubble pass per frame
+/ one bubble pass every few frames
 step:{[s;t]
   if[0=.p5.f mod 3;
     i:til n-1;
@@ -231,7 +234,8 @@ notes:16?scale
 score:([] f:notes; t:0.18*til 16; d:0.22; amp:0.18)
 play score
 
-draw update shape:\`circle, x:40+(.p5.w-80)*t%3, y:.p5.cy-(f-220)*0.9,
+draw update shape:\`circle, x:remap[t;0;max t;50;.p5.w-50],
+            y:remap[f;min f;max f;.p5.h-60;60],
             r:14, fill:hsv[(f%440);0.6;1] from score`,
   },
   {

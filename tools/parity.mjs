@@ -85,8 +85,12 @@ for (const [file, blocks] of files) {
   } catch {}
   for (const block of blocks) {
   if (block.skip) {
-    // still execute, so later blocks on the page see the state
+    // still execute, so later blocks on the page see the state, but never
+    // let a skipped block build a multi-million row fixture
+    const budget = Date.now() + 400;
     for (const step of block.steps) {
+      if (Date.now() > budget) break;
+      if (/\d{3,}\s*[*#?]|\?\s*\d{4,}/.test(step.in)) continue;
       try {
         runConsole(ip, step.in);
       } catch {}

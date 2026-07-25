@@ -85,14 +85,15 @@ canvas talks to the *live* sketch, so you can pause it and poke at its state.
 
 ## How close is the interpreter to real kdb+?
 
-The **Parity** tab answers that honestly, in your browser. At the time of writing, of the
-2203 documentation examples that ship with the app (the `ref/` and `basics/` pages):
+The **Parity** tab answers that honestly, in your browser. Of the 2203 documentation
+examples that ship with the app (the `ref/` and `basics/` pages):
 
-- ~71% reproduce kdb+'s printed output character-for-character
-- the rest are listed, with a diff, so nothing is swept under the rug
+- **73.9%** reproduce kdb+'s printed output character-for-character
+- 210 need data we don't ship and are reported separately, never counted as passes
+- the rest are listed with a diff, so nothing is swept under the rug
 
-The full corpus (`npm run parity`, ~3900 examples including the whitepapers) sits around
-69%. Known gaps, roughly in order of how often they bite:
+The full corpus (`npm run parity`, 3852 examples including the whitepapers) sits at
+**71.2%**. Known gaps, roughly in order of how often they bite:
 
 - **enumerations** (`` `sym$x ``, type 20+) are not implemented
 - **`parse`** returns the source string instead of a parse tree

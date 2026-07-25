@@ -26,7 +26,7 @@ app.innerHTML = `
     <div class="brand"><b>q</b><span>·</span>sketch <small>creative coding for kdb+ minds</small></div>
     <div class="spacer"></div>
     <select id="examples" title="Load an example"></select>
-    <button id="trace" class="ghost desktop-only" title="Explain the evaluation, right to left">Trace</button>
+    <button id="trace" class="ghost" title="Explain the evaluation, right to left">Trace</button>
     <button id="share" class="ghost" title="Copy a link to this sketch">Share</button>
     <button id="run" class="primary" title="Ctrl/Cmd + Enter">Run ▶</button>
   </header>
@@ -61,6 +61,7 @@ app.innerHTML = `
         <div class="canvas-tools">
           <button id="playpause" title="Pause / resume">⏸</button>
           <button id="snap" title="Save a PNG">PNG</button>
+          <button id="rec" title="Record a webm clip">REC</button>
         </div>
         <div class="canvas-badges">
           <span class="badge mode" id="badge-mode">idle</span>
@@ -212,6 +213,47 @@ $('#snap')!.addEventListener('click', () => {
   a.download = 'q-sketch.png';
   a.href = cv.toDataURL('image/png');
   a.click();
+});
+
+// ---------------------------------------------------------------- recording
+
+let recorder: MediaRecorder | null = null;
+$('#rec')!.addEventListener('click', () => {
+  const btn = $('#rec')!;
+  if (recorder) {
+    recorder.stop();
+    return;
+  }
+  const cv = $('#canvas')!.querySelector('canvas') as HTMLCanvasElement | null;
+  if (!cv || typeof MediaRecorder === 'undefined') {
+    toast('recording is not supported in this browser');
+    return;
+  }
+  const chunks: BlobPart[] = [];
+  const stream = cv.captureStream(60);
+  try {
+    recorder = new MediaRecorder(stream, { mimeType: 'video/webm' });
+  } catch {
+    toast('recording is not supported in this browser');
+    return;
+  }
+  recorder.ondataavailable = (e) => chunks.push(e.data);
+  recorder.onstop = () => {
+    const url = URL.createObjectURL(new Blob(chunks, { type: 'video/webm' }));
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = 'q-sketch.webm';
+    a.click();
+    URL.revokeObjectURL(url);
+    recorder = null;
+    btn.textContent = 'REC';
+    btn.style.color = '';
+    toast('clip saved');
+  };
+  recorder.start();
+  btn.textContent = '■';
+  btn.style.color = '#ff6b6b';
+  toast('recording — tap again to save');
 });
 
 $('#share')!.addEventListener('click', async () => {

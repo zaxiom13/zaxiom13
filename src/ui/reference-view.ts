@@ -25,6 +25,31 @@ export function renderReference(host: HTMLElement, getIp: () => Interp, opts: Re
     )
   );
 
+  host.append(
+    el('h3', {}, 'The canvas API in one screen'),
+    el('div', {
+      class: 'kv',
+      html: [
+        ['draw scene', 'render a table of shapes'],
+        ['frame:{[t] scene}', 'animate: a pure function of time'],
+        ['init / step[s;t] / view[s]', 'animate with state'],
+        ['draw:{[t] .p5.circle[…] }', 'immediate mode, if you must'],
+        ['shape column', '`circle `ring `rect `box `line `tri `ngon `text `point `path `poly `arc `ellipse'],
+        ['position', 'x y  (x2 y2 x3 y3 for line/tri, pts for path/poly)'],
+        ['size', 'r  w h  size (text)  n (ngon sides)  round (rect corner)'],
+        ['style', 'fill stroke sw (weight) a (alpha 0-1) rot (radians)'],
+        ['colour', '`red `gold … · `#ff6b6b · hsv[h;s;v] · rgb[r;g;b] · gray x · pal`sunset'],
+        ['inputs', '.p5.t .p5.f .p5.w .p5.h .p5.cx .p5.cy .p5.mx .p5.my .p5.down .p5.touch'],
+        ['helpers', 'grid polar lerp remap clamp wave noise'],
+        ['sound', 'beep[freq;dur;amp] · play ([] f:…; t:…; d:…)'],
+      ]
+        .map(([a, b]) => `<b>${a.replace(/&/g, '&amp;').replace(/</g, '&lt;')}</b><span>${b
+          .replace(/&/g, '&amp;')
+          .replace(/</g, '&lt;')}</span>`)
+        .join(''),
+    })
+  );
+
   const search = el('input', {
     placeholder: 'search…',
     spellcheck: 'false',

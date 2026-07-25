@@ -45,10 +45,10 @@ export function renderInspector(host: HTMLElement, ip: Interp, onEval: (src: str
         'button',
         {
           class: 'chip',
-          onclick: () => {
+          onclick: (e: Event) => {
             show(n);
             for (const c of Array.from(list.children)) c.classList.remove('active');
-            (event?.target as HTMLElement)?.classList.add('active');
+            (e.currentTarget as HTMLElement).classList.add('active');
           },
         },
         n

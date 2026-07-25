@@ -1952,6 +1952,31 @@ export function installBuiltins(ip: Interp) {
   def('raze', [1], (ip2, [x]) => {
     const n = count(x);
     if (n === 0) return x;
+    if (x.t === 0) {
+      // flatten in one pass rather than n joins
+      const parts = (x as QVector).v as QValue[];
+      let total = 0;
+      let allSame = true;
+      const t0 = parts[0].t;
+      for (const p2 of parts) {
+        if (p2.t !== t0) allSame = false;
+        total += isAtom(p2) ? 1 : count(p2);
+      }
+      checkLen(total);
+      if (allSame && t0 > 0 && t0 <= 19) {
+        if (t0 === 10) return str(parts.map((p2) => (p2 as QVector).v as string).join(''));
+        const out: any[] = new Array(total);
+        let k = 0;
+        for (const p2 of parts) for (const v of (p2 as QVector).v as any[]) out[k++] = v;
+        return typedVec(t0, out);
+      }
+      const out: QValue[] = [];
+      for (const p2 of parts) {
+        if (isAtom(p2) || isFunc(p2)) out.push(p2);
+        else for (const e of items(p2)) out.push(e);
+      }
+      return fromItems(out);
+    }
     let acc: QValue | null = null;
     for (let i = 0; i < n; i++) {
       const e = at(x, i);

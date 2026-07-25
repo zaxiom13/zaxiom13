@@ -13,6 +13,12 @@ export interface TraceStep {
 }
 
 /** Reconstruct q source from an AST node (used for trace labels). */
+/** one-line, length-capped rendering of a value for trace labels */
+function short(v: QValue): string {
+  const s = compact(v);
+  return s.length > 34 ? s.slice(0, 32) + '..' : s;
+}
+
 export function unparse(n: Node | null): string {
   if (!n) return '';
   switch (n.k) {
@@ -111,7 +117,8 @@ export function traceExpr(base: Interp, src: string): TraceStep[] {
       case 'lambda':
       case 'nil': {
         const v = ip.evalNode(node, frame);
-        if (node.k === 'name') push(node, v, depth);
+        // naming a function is not a step worth showing
+        if (node.k === 'name' && !isFunc(v)) push(node, v, depth);
         return v;
       }
       default: {
@@ -141,25 +148,25 @@ export function traceExpr(base: Interp, src: string): TraceStep[] {
       if (isFunc(v)) {
         if (i > 0 && ip.rankOf(v) >= 2 && !(xs[i] as any).paren) {
           const lv = ev(i - 1);
+          const label = `${short(lv)} ${unparse(xs[i])} ${short(val)}`;
           val = ip.apply(v, [lv, val]);
-          steps.push({
-            depth,
-            src: `${unparse(xs[i - 1])} ${unparse(xs[i])} ${'…'}`,
-            value: val,
-          });
+          steps.push({ depth, src: label, value: val });
           i -= 2;
         } else {
+          const label = `${unparse(xs[i])} ${short(val)}`;
           val = ip.apply(v, [val]);
-          steps.push({ depth, src: `${unparse(xs[i])} …`, value: val });
+          steps.push({ depth, src: label, value: val });
           i--;
         }
       } else if (isFunc(val)) {
+        const label = `${short(v)} ${unparse(xs[i + 1] ?? xs[i])}`;
         val = { t: 104, f: val, args: [v, null] } as QProj;
-        steps.push({ depth, src: `${unparse(xs[i])} ${unparse(xs[i + 1] ?? xs[i])}`, value: val });
+        steps.push({ depth, src: label, value: val });
         i--;
       } else {
+        const label = `${short(v)} ${short(val)}`;
         val = ip.apply(v, [val]);
-        steps.push({ depth, src: `${unparse(xs[i])} …`, value: val });
+        steps.push({ depth, src: label, value: val });
         i--;
       }
     }

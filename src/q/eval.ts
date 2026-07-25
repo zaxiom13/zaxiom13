@@ -1024,9 +1024,11 @@ export class Interp {
       const keep: number[] = [];
       if (isAtom(res)) {
         if (truthy(res)) keep.push(...rows);
-      } else {
+      } else if (res.t > 0 && res.t <= 19) {
         const arr = rawArray(res);
         for (let i = 0; i < rows.length; i++) if (arr[i]) keep.push(rows[i]);
+      } else {
+        for (let i = 0; i < rows.length; i++) if (truthy(at(res, i))) keep.push(rows[i]);
       }
       rows = keep;
     }
