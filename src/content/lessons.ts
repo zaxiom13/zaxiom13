@@ -251,31 +251,31 @@ export const LESSONS: Lesson[] = [
         'Here is the whole idea of this playground: **a drawing is a table**. One row per shape, one column per property. `draw` puts it on the canvas — and `draw` is the only thing that ever does.'
       ),
       s(
-        'bg `#0b0e13\ndraw ([] shape:`circle`rect`tri;\n       x:120 260 400;\n       y:150 150 150;\n       r:50 40 45;\n       fill:`crimson`gold`mint)'
+        'bg `#0b0e13\ndraw ([] shape:`circle`rect`tri;\n       p:(120 150f;260 150f;400 150f);\n       r:50 40 45;\n       fill:`crimson`gold`mint)'
       ),
       t(
-        'Missing columns fall back to sensible defaults, so the smallest possible scene is just some coordinates:'
+        'Position is a **2-vector column** `p` — not separate `x` and `y`. Missing columns fall back to sensible defaults, so the smallest possible scene is just some points:'
       ),
-      s('draw ([] x:100 200 300; y:100 160 220)'),
+      s('draw ([] p:flip(100 200 300;100 160 220))'),
       t(
-        'Because it is a table, you build pictures with the tools you already learned. `til`, `update`, `where` — no drawing API to memorise:'
+        'Because it is a table, you build pictures with the tools you already learned. `til`, `update`, `where`, `flip` — no drawing API to memorise:'
       ),
       s(
-        'bg `#07090d\ni:til 40\ndraw ([] x:20+18*i; y:200+120*sin 0.3*i; r:4+3*i%10; fill:hsv[i%40;0.6;1])'
+        'bg `#07090d\ni:til 40\ndraw ([] p:flip(20+18*i;200+120*sin 0.3*i); r:4+3*i%10; fill:hsv[i%40;0.6;1])'
       ),
       t(
         'Writing the table out by hand gets old, so there are **constructors** for the common shapes. They return ordinary tables too, and `,` joins them into one scene:'
       ),
       s(
-        'bg `#0b0e13\nu:.p5.w%5\ncircles[u*1 2;.p5.cy;30;`crimson`gold],rects[u*3;.p5.cy;70;50;`mint],tris[u*4;.p5.cy;34;`#b892ff]'
+        'bg `#0b0e13\nu:.p5.w%5\ncircles[flip(u*1 2;2#.p5.cp[1]);30;`crimson`gold],rects[(u*3;.p5.cp[1]);70;50;`mint],tris[(u*4;.p5.cp[1]);34;`#b892ff]'
       ),
       n(
-        'Constructors: `circles[x;y;r]` `rings` `rects[x;y;w;h]` `squares[x;y;s]` `bars[x;y0;w;h]` `lines[x;y;x2;y2]` `tris[x;y;r]` `ngons[x;y;r;n]` `points[x;y]` `texts[x;y;txt]` `arcs[x;y;r;a0;a1]` `path[xs;ys]` `poly[xs;ys]`. Each takes an optional colour as a final argument.'
+        'Constructors: `circles[p;r;fill?]` `rings[p;r]` `rects[p;w;h]` `squares[p;s]` `bars[xs;y0;w;h]` `lines[p;p2]` `tris[p;r]` `ngons[p;r;n]` `points[p]` `texts[p;txt]` `arcs[p;r;a0;a1]` · `path`/`poly` accept pts or xs;ys. Each takes an optional colour as a final argument.'
       ),
       t('And four combinators restyle a whole scene at once:'),
-      c('paint[circles[100 200;100;30];`gold]'),
+      c('paint[circles[100 100f;30];`gold]'),
       n(
-        '`paint` sets fill · `outline` sets stroke · `fade` sets alpha · `spin` rotates · `nudge[scene;dx;dy]` moves. Shapes: `circle `ring `rect `box `line `tri `ngon `text `point `path `poly `arc `ellipse. Columns: x y r w h x2 y2 rot fill stroke sw a txt size pts n round.'
+        '`paint` sets fill · `outline` sets stroke · `fade` sets alpha · `spin` rotates · `nudge[scene;dp]` moves by a 2-vector. Shapes: `circle `ring `rect `box `line `tri `ngon `text `point `path `poly `arc `ellipse. Columns: p p2 p3 r w h rot fill stroke sw a txt size pts n round.'
       ),
       t('For data, `plot` and `scatter` scale a vector to the canvas for you:'),
       s('bg `#07090d\nwalk:sums (200?1.0)-0.5\nplot (walk; 20 mavg walk)'),
@@ -284,8 +284,8 @@ export const LESSONS: Lesson[] = [
       prompt: 'Draw a row of 10 circles of increasing radius. Store the scene in `scene` and draw it.',
       starter: 'scene:\ndraw scene',
       check: '(count scene) = 10',
-      solution: 'scene:([] x:50+60*til 10; y:150; r:5+3*til 10; fill:`cyan)\ndraw scene',
-      hint: 'x:50+60*til 10 spaces them out; r can be another vector.',
+      solution: 'scene:([] p:flip(50+60*til 10;10#150f); r:5+3*til 10; fill:`cyan)\ndraw scene',
+      hint: 'flip(50+60*til 10;10#150f) builds the p column; r can be another vector.',
     },
   },
   {
@@ -302,10 +302,10 @@ export const LESSONS: Lesson[] = [
       c('key pal'),
       c('pal`sunset'),
       s(
-        'bg `#0b0e13\np:pal`vapor\ni:til 40\ndraw ([] x:30+22*i; y:.p5.cy; r:16; fill:p i mod count p)'
+        'bg `#0b0e13\np:pal`vapor\ni:til 40\ndraw ([] p:flip(30+22*i;40#.p5.cp[1]); r:16; fill:p i mod count p)'
       ),
       t('Rainbows are one `hsv` away, because the hue argument is just a vector:'),
-      s('bg `black\ni:til 60\ndraw ([] x:12+16*i; y:.p5.cy; w:14; h:200; shape:`rect; fill:hsv[i%60;0.75;1])'),
+      s('bg `black\ni:til 60\ndraw ([] p:flip(12+16*i;60#.p5.cp[1]); w:14; h:200; shape:`rect; fill:hsv[i%60;0.75;1])'),
     ],
   },
   {
@@ -317,20 +317,20 @@ export const LESSONS: Lesson[] = [
         'Everything on the canvas gets there through `draw`. To animate, put your `draw` calls in a function named **`frame`**: the playground calls it about sixty times a second and hands it the time in seconds.'
       ),
       s(
-        'bg `#07090d\nframe:{[t]\n  i:til 30;\n  draw circles[20+22*i; .p5.cy+90*sin[t+0.3*i]; 8; hsv[(i%30)+0.1*t;0.6;1]] }'
+        'bg `#07090d\nframe:{[t]\n  i:til 30;\n  draw circles[flip(20+22*i; .p5.cp[1]+90*sin[t+0.3*i]); 8; hsv[(i%30)+0.1*t;0.6;1]] }'
       ),
       t('You can call `draw` as many times as you like — the canvas is wiped once per frame, and everything you draw lands on it:'),
       s(
-        'bg `#07090d\nframe:{[t]\n  draw circles[.p5.cx; .p5.cy; 120+30*sin t; `#12203a];\n  draw circles[.p5.cx+100*cos t; .p5.cy+100*sin t; 22; `gold];\n  draw texts[.p5.cx; 30; "two draws, one frame"; 13] }'
+        'bg `#07090d\nframe:{[t]\n  draw circles[.p5.cp; 120+30*sin t; `#12203a];\n  draw circles[.p5.cp+(100*cos t;100*sin t); 22; `gold];\n  draw texts[.p5.cp[0],30f; "two draws, one frame"; 13] }'
       ),
       t('Handy globals while a sketch runs:'),
       c('.p5.w'),
       n(
-        '`.p5.t` seconds · `.p5.f` frame number · `.p5.w` `.p5.h` canvas size · `.p5.cx` `.p5.cy` centre · `.p5.mx` `.p5.my` pointer · `.p5.down` pressed · `.p5.touch` a table of touches.'
+        '`.p5.t` seconds · `.p5.f` frame number · `.p5.w` `.p5.h` canvas size · `.p5.wh` size as a 2-vector · `.p5.cp` centre · `.p5.mp` pointer · `.p5.down` pressed · `.p5.touch` a table of touches.'
       ),
       t('Everything is still a table, so an animation can be filtered and joined like data:'),
       s(
-        'bg `#07090d\nframe:{[t]\n  i:til 120;\n  s:([] x:i*.p5.w%120; y:.p5.cy+120*sin[(0.1*i)+2*t]; r:3; fill:`#5ec2ff);\n  hi:select from s where y<.p5.cy;\n  draw s,update r:7, fill:`#ff7ab2 from hi }'
+        'bg `#07090d\nframe:{[t]\n  i:til 120;\n  s:([] p:flip(i*.p5.w%120; .p5.cp[1]+120*sin[(0.1*i)+2*t]); r:3; fill:`#5ec2ff);\n  hi:select from s where (p[;1])<.p5.cp[1];\n  draw s,update r:7, fill:`#ff7ab2 from hi }'
       ),
     ],
     challenge: {
@@ -338,8 +338,8 @@ export const LESSONS: Lesson[] = [
       starter: 'frame:{[t] }',
       check: 'not (frame[0.0]~frame[1.0])',
       solution:
-        'frame:{[t] draw circles[.p5.cx+(0.4*.p5.w)*sin t; .p5.cy; 30; `gold] }',
-      hint: 'Use sin t to move x, and keep y fixed.',
+        'frame:{[t] draw circles[.p5.cp+(0.4*.p5.w*sin t;0f); 30; `gold] }',
+      hint: 'Offset `.p5.cp` with a 2-vector whose x uses sin t.',
     },
   },
   {
@@ -347,15 +347,15 @@ export const LESSONS: Lesson[] = [
     title: 'Interaction',
     blurb: 'The pointer is just another variable.',
     blocks: [
-      t('`.p5.mx` and `.p5.my` follow the mouse or finger. Because they are ordinary values you can put them straight into a table.'),
+      t('`.p5.mp` is the mouse (or finger) as a 2-vector. Because it is an ordinary value you can put it straight into a table — or add it across a whole column with `+/:`.'),
       s(
-        'bg `#0a0d13\nframe:{[t]\n  k:til 12;\n  p:polar[70;(2*pi*k%12)+t];\n  draw circles[.p5.mx+p`x; .p5.my+p`y; 10; hsv[k%12;0.7;1]] }'
+        'bg `#0a0d13\nframe:{[t]\n  k:til 12;\n  draw circles[(.p5.mp)+/:(polar[70;(2*pi*k%12)+t]`p); 10; hsv[k%12;0.7;1]] }'
       ),
       t('`.p5.down` is true while the pointer is held, and `?[cond;a;b]` picks values elementwise:'),
       s(
-        'bg `#0a0d13\nframe:{[t]\n  i:til 200;\n  d:?[.p5.down;120;40];\n  p:polar[d*sqrt i%200;i*2.4];\n  draw circles[.p5.cx+p`x; .p5.cy+p`y; 3; ?[.p5.down;`#ff7ab2;`#5ec2ff]] }'
+        'bg `#0a0d13\nframe:{[t]\n  i:til 200;\n  d:?[.p5.down;120;40];\n  draw circles[(.p5.cp)+/:(polar[d*sqrt i%200;i*2.4]`p); 3; ?[.p5.down;`#ff7ab2;`#5ec2ff]] }'
       ),
-      n('On a phone the whole canvas is a touch surface — `.p5.touch` is a table of active touches with x, y and id columns.'),
+      n('On a phone the whole canvas is a touch surface — `.p5.touch` is a table of active touches with `p` and `id` columns.'),
     ],
   },
   {
@@ -370,7 +370,7 @@ export const LESSONS: Lesson[] = [
         "`frame:{[t] … }` gets the time. `frame:{[s;t] … }` gets last time's answer *and* the time, and whatever it returns becomes the next `s`. `init` sets the first one."
       ),
       s(
-        'bg `#06080c\ninit:([] x:200?800f; y:200?600f; vx:(200?2.0)-1; vy:(200?2.0)-1)\n\nframe:{[s;t]\n  s:update x:x+vx, y:y+vy from s;\n  s:update vx:?[(x<0)|x>.p5.w;neg vx;vx] from s;\n  s:update vy:?[(y<0)|y>.p5.h;neg vy;vy] from s;\n  draw circles[s`x; s`y; 3; `#7dd3fc];\n  s }'
+        'bg `#06080c\ninit:([] p:flip(200?800f;200?600f); v:flip((200?2.0)-1;(200?2.0)-1))\n\nframe:{[s;t]\n  s:update p:p+v from s;\n  s:update v:flip (?[(p[;0]<0)|p[;0]>.p5.w;neg v[;0];v[;0]];?[(p[;1]<0)|p[;1]>.p5.h;neg v[;1];v[;1]]) from s;\n  draw circles[s`p; 3; `#7dd3fc];\n  s }'
       ),
       t(
         'The state can be anything: a table of particles, a matrix, a dictionary, even a single number. It is the same shape as `over` and `scan` — an animation is a fold you can watch.'
@@ -387,7 +387,7 @@ export const LESSONS: Lesson[] = [
       starter: 'init:0\nframe:{[s;t] }',
       check: '2 = frame[frame[init;0];0]',
       solution:
-        'init:0\nframe:{[s;t]\n  draw circles[.p5.cx; .p5.cy; 1+s mod 100; `gold];\n  s+1 }',
+        'init:0\nframe:{[s;t]\n  draw circles[.p5.cp; 1+s mod 100; `gold];\n  s+1 }',
       hint: 'Draw something, then return s+1 as the last expression.',
     },
   },
@@ -397,11 +397,11 @@ export const LESSONS: Lesson[] = [
     blurb: 'Every input is just a q value you can read.',
     blocks: [
       t(
-        'While a sketch runs, the pointer lives in `.p5.mx` and `.p5.my`, and `.p5.mouse` is a dictionary of the lot:'
+        'While a sketch runs, the pointer lives in `.p5.mp`, and `.p5.mouse` is a dictionary of the lot:'
       ),
       c('.p5.mouse'),
       s(
-        'bg `#0a0d13\nframe:{[t]\n  p:polar[70;(2*pi*(til 12)%12)+t];\n  draw circles[.p5.mx+p`x; .p5.my+p`y; 9; hsv[(til 12)%12;0.7;1]];\n  draw texts[.p5.mx; .p5.my-100; "follow me"; 12] }'
+        'bg `#0a0d13\nframe:{[t]\n  draw circles[(.p5.mp)+/:(polar[70;(2*pi*(til 12)%12)+t]`p); 9; hsv[(til 12)%12;0.7;1]];\n  draw texts[.p5.mp+0 -100f; "follow me"; 12] }'
       ),
       t(
         'Keys are a symbol list in `.p5.keys`, and `pressed` asks about one (or several) directly. It is vectorised, so arithmetic on key state works:'
@@ -410,9 +410,9 @@ export const LESSONS: Lesson[] = [
       n(
         'Key names are what you would expect: `` `a `` .. `` `z ``, `` `left `` `` `right `` `` `up `` `` `down ``, `` `space ``, `` `enter ``, `` `shift ``. Typing in the editor never reaches the sketch — click the canvas first.'
       ),
-      t('A steering demo: acceleration is the difference of two booleans.'),
+      t('A steering demo: state is a position `p` and velocity `v`, both 2-vectors. Acceleration is the difference of two booleans.'),
       s(
-        'bg `#07090d\ninit:`x`y`vx`vy!(.p5.cx;.p5.cy;0f;0f)\nframe:{[s;t]\n  s[`vx]:0.95*s[`vx]+0.5*pressed[`right]-pressed `left;\n  s[`vy]:0.95*s[`vy]+0.5*pressed[`down]-pressed `up;\n  s[`x]:(s[`x]+s`vx) mod .p5.w;\n  s[`y]:(s[`y]+s`vy) mod .p5.h;\n  draw circles[s`x; s`y; 14; `gold];\n  draw texts[80; 24; "arrow keys"; 12];\n  s }'
+        'bg `#07090d\ninit:`p`v!(.p5.cp;0 0f)\nframe:{[s;t]\n  s[`v]:0.95*s[`v]+(0.5*pressed[`right]-pressed `left;0.5*pressed[`down]-pressed `up);\n  s[`p]:(s[`p]+s`v) mod .p5.wh;\n  draw circles[s`p; 14; `gold];\n  draw texts[80 24f; "arrow keys"; 12];\n  s }'
       ),
       t('`.p5.down` is true while the pointer is held, `.p5.clicks` counts clicks, and `.p5.touch` is a table of active touches on a phone.'),
     ],
@@ -438,7 +438,7 @@ export const LESSONS: Lesson[] = [
         'Assign a function to `.z.ts` and it is called on every tick, with the current timestamp as its argument. Anything you `draw` stays on the canvas until the next tick.'
       ),
       s(
-        'bg `#0a0d13\nn:0\n\\t 200\n.z.ts:{[now]\n  n::n+1;\n  draw circles[.p5.cx;.p5.cy;20+8*n mod 9;hsv[0.05*n;0.6;1]],\n       texts[.p5.cx;.p5.cy+120;"tick ",string n;13] }'
+        'bg `#0a0d13\nn:0\n\\t 200\n.z.ts:{[now]\n  n::n+1;\n  draw circles[.p5.cp;20+8*n mod 9;hsv[0.05*n;0.6;1]],\n       texts[.p5.cp+0 120f;"tick ",string n;13] }'
       ),
       t(
         'That is the shape of a tickerplant: a timer appends rows to a table, and everything downstream reads the table. Here the "downstream" is a chart.'
@@ -495,13 +495,13 @@ export const LESSONS: Lesson[] = [
       ),
       c('.c.tbl .c.roots 5'),
       s(
-        'bg `#07090d\npts:.c.roots 9\ns:0.4*.p5.h\ndraw poly[.p5.cx+s*.c.re pts; .p5.cy+s*.c.im pts; `#1f6feb]\ndraw circles[.p5.cx+s*.c.re pts; .p5.cy+s*.c.im pts; 12; `gold]'
+        'bg `#07090d\npts:.c.roots 9\ns:0.4*.p5.h\ndraw poly[(.p5.cp)+/:flip(s*.c.re pts;s*.c.im pts); `#1f6feb]\ndraw circles[(.p5.cp)+/:flip(s*.c.re pts;s*.c.im pts); 12; `gold]'
       ),
       t(
         'Multiplying by a unit complex number is a rotation, which makes spinning things trivial:'
       ),
       s(
-        'bg `#07090d\npts:.c.roots 6\nframe:{[t]\n  w:.c.rot[pts;t];\n  s:0.35*.p5.h;\n  draw poly[.p5.cx+s*.c.re w; .p5.cy+s*.c.im w; `#b892ff] }'
+        'bg `#07090d\npts:.c.roots 6\nframe:{[t]\n  w:.c.rot[pts;t];\n  s:0.35*.p5.h;\n  draw poly[(.p5.cp)+/:flip(s*.c.re w;s*.c.im w); `#b892ff] }'
       ),
       h3('Fractals'),
       t(
@@ -512,7 +512,7 @@ export const LESSONS: Lesson[] = [
       c('step:{[c;z] .c.add[.c.mul[z;z];c]}\n.c.str 6 step[.c.z[-0.4;0.6]]/ .c.z[0;0]'),
       t('So a Mandelbrot set is a grid, an escape count, and a colour:'),
       s(
-        'bg `black\nW:110; H:80\nzs:.c.grid[W;H;.c.z[-2.2;-1.2];.c.z[0.8;1.2]]\nxy:grid[W;H]\ncw:.p5.w%W; ch:.p5.h%H\nn:.c.escape[0;zs;60]\nsel:update n:n, v:(n%60) xexp 0.4 from xy\ndraw select shape:`rect, x:cw*(0.5+x), y:ch*(0.5+y), w:cw+1, h:ch+1,\n            fill:?[n=60;`black;hsv[0.6+0.4*v;0.8;0.15+0.85*v]] from sel'
+        'bg `black\nW:110; H:80\nzs:.c.grid[W;H;.c.z[-2.2;-1.2];.c.z[0.8;1.2]]\nxy:grid[W;H]\ncw:.p5.w%W; ch:.p5.h%H\nn:.c.escape[0;zs;60]\nsel:update n:n, v:(n%60) xexp 0.4 from xy\ndraw select shape:`rect, p:flip(cw*(0.5+p[;0]);ch*(0.5+p[;1])), w:cw+1, h:ch+1,\n            fill:?[n=60;`black;hsv[0.6+0.4*v;0.8;0.15+0.85*v]] from sel'
       ),
       n(
         'There is also `.c.fft` and `.c.ifft` if you want a spectrum, `.c.sqrt` `.c.log` `.c.pow` `.c.sin` `.c.cos` for the usual functions, and `.c.conj` `.c.inv` `.c.polar` `.c.expi` `.c.sum` `.c.avg`.'
@@ -560,7 +560,7 @@ export const LESSONS: Lesson[] = [
       ),
       c('scale:220*1 1.125 1.25 1.333 1.5 1.667 1.875 2\nscale'),
       s(
-        'notes:8#scale\nplay ([] f:notes; t:0.2*til 8; d:0.25; amp:0.2)\ndraw ([] x:60+70*til 8; y:.p5.cy-0.4*notes-220; r:18; fill:hsv[(til 8)%8;0.6;1])'
+        'notes:8#scale\nplay ([] f:notes; t:0.2*til 8; d:0.25; amp:0.2)\ndraw ([] p:flip(60+70*til 8;.p5.cp[1]-0.4*notes-220); r:18; fill:hsv[(til 8)%8;0.6;1])'
       ),
       n('`beep[freq;dur;amp]` plays a single tone. Browsers only allow audio after you interact with the page.'),
     ],
@@ -570,7 +570,7 @@ export const LESSONS: Lesson[] = [
     title: 'Idioms worth stealing',
     blurb: 'Small phrases that show up everywhere.',
     blocks: [
-      t('**Cross for grids** — `grid[nx;ny]` is a cross join, and cross joins build lattices:'),
+      t('**Cross for grids** — `grid[nx;ny]` returns `([] p:…)` 2-vectors, and cross joins build lattices:'),
       c('grid[3;2]'),
       t('**Group** turns a vector into a dictionary of indices, which is how `by` works underneath:'),
       c('group `a`b`a`c`b'),
@@ -589,10 +589,10 @@ export const LESSONS: Lesson[] = [
       c('flip 3 4#til 12'),
     ],
     challenge: {
-      prompt: 'Using `grid` and `where`, build `d`: the grid coordinates of a 5×5 board where x equals y (the diagonal).',
+      prompt: 'Using `grid` and `where`, build `d`: the grid coordinates of a 5×5 board where the two components of `p` are equal (the diagonal).',
       starter: 'd:',
-      check: 'd ~ select from grid[5;5] where x=y',
-      solution: 'd:select from grid[5;5] where x=y',
+      check: 'd ~ select from grid[5;5] where (p[;0])=p[;1]',
+      solution: 'd:select from grid[5;5] where (p[;0])=p[;1]',
     },
   },
   {

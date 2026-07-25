@@ -11,9 +11,8 @@ bg `#07090d
 n:90
 frame:{[t]
   i:til n;
-  x:(.p5.w%n)*0.5+i;
-  y:.p5.cy+120*sin[(0.15*i)+3*t];
-  ([] x:x; y:y; r:4+3*sin[(0.3*i)-2*t]; fill:hsv[(i%n)+0.1*t;0.65;1]) }
+  p:flip ((.p5.w%n)*0.5+i; .p5.cp[1]+120*sin[(0.15*i)+3*t]);
+  ([] p:p; r:4+3*sin[(0.3*i)-2*t]; fill:hsv[(i%n)+0.1*t;0.65;1]) }
 ```
 
 ## What's in here
@@ -84,31 +83,40 @@ kdb+ is famously terse and famously hard to *feel*. The fastest way to internali
 right-to-left evaluation, atomic operations and table thinking is to see them move.
 
 So the drawing model is deliberately not an API. There is no `circle(x, y, r)`. There is a
-table:
+table, and position is a **2-vector** column `p` — so the same array arithmetic that moves a
+particle also builds a picture:
 
 ```q
-draw ([] shape:`circle`rect`tri; x:120 260 400; y:150 150 150; r:50 40 45;
+draw ([] shape:`circle`rect`tri; p:(120 150f;260 150f;400 150f); r:50 40 45;
          fill:`crimson`gold`mint)
 ```
 
 Which means everything you learn about q is immediately a drawing tool:
 
 ```q
-/ a lattice: cross join
+/ a lattice: cross join of 2-vectors
 g:grid[16;10]
-/ move it: update
-g:update x:40+40*x, y:40+40*y from g
+/ move it: update (p is a column of points)
+g:update p:40+40*p from g
 / colour it: vectorised hsv
 draw update r:6+4*sin[0.35*i], fill:hsv[i%40;0.6;1] from g
+```
+
+Physics reads like the maths, because `v` and `p` are the same kind of thing:
+
+```q
+s:update v:v+a from s
+s:update p:p+v from s
 ```
 
 ### Shape constructors
 
 Writing table literals by hand gets old, so there are builders. They all return plain
-tables, and `,` joins them into one scene:
+tables, and `,` joins them into one scene. Every position argument is a 2-vector (or a
+list of them — build many with `flip (xs;ys)`):
 
 ```q
-circles[100 200;150;30;`crimson`gold] , rects[300;150;70;50;`mint] , texts[200;250;"hi"]
+circles[flip(100 200f;150 150f);30;`crimson`gold] , rects[300 150f;70;50;`mint] , texts[.p5.cp;"hi"]
 ```
 
 `circles rings rects squares bars lines tris ngons points texts arcs path poly`, plus
@@ -126,17 +134,17 @@ and you can call it as often as you like — the canvas is wiped once per tick, 
 you draw lands on it.
 
 ```q
-draw circles[100 200;150;30;`gold]          / a still picture
+draw circles[flip(100 200f;150 150f);30;`gold]          / a still picture
 ```
 
 To animate, put those `draw` calls in a function called `frame`. Its **rank decides what it
 is handed**:
 
 ```q
-frame:{[t] draw circles[.p5.cx+100*sin t; .p5.cy; 20; `gold] }        / the time
+frame:{[t] draw circles[.p5.cp+(100*sin t;0); 20; `gold] }             / the time
 
-init:0                                                                 / …and state
-frame:{[s;t] draw circles[.p5.cx; .p5.cy; 1+s mod 100; `gold]; s+1 }
+init:0                                                                  / …and state
+frame:{[s;t] draw circles[.p5.cp; 1+s mod 100; `gold]; s+1 }
 ```
 
 With two parameters, `frame` is handed whatever it returned last tick — the animation is a
@@ -155,15 +163,16 @@ function on a timer that calls `draw`:
 
 ### Input
 
-`.p5.mx` `.p5.my` `.p5.down` `.p5.clicks` `.p5.mouse` `.p5.touch` for pointing,
-`.p5.keys` `.p5.key` and `pressed \`left\`right` for typing. They are ordinary q values, so
-steering is arithmetic on booleans:
+`.p5.mp` (pointer as a 2-vector), `.p5.down` `.p5.clicks` `.p5.mouse` `.p5.touch` for
+pointing, `.p5.keys` `.p5.key` and `pressed \`left\`right` for typing. They are ordinary
+q values, so steering is arithmetic on booleans into a velocity 2-vector:
 
 ```q
-s[`vx]:0.95*s[`vx]+0.5*pressed[`right]-pressed `left
+s[`v]:0.95*s[`v]+(0.5*pressed[`right]-pressed `left; 0.5*pressed[`down]-pressed `up)
+s[`p]:(s[`p]+s`v) mod .p5.wh
 ```
 
-While a sketch runs, `.p5.t`, `.p5.f`, `.p5.w`, `.p5.h`, `.p5.cx`, `.p5.cy` are live too,
+While a sketch runs, `.p5.t`, `.p5.f`, `.p5.w`, `.p5.h`, `.p5.wh`, `.p5.cp` are live too,
 and the running `state` is a global. The `q)` prompt under the canvas talks to the *live*
 sketch, so you can pause it and poke at its state.
 

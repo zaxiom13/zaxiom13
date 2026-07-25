@@ -12,9 +12,9 @@ export const EXAMPLES: Example[] = [
   {
     id: 'hello',
     title: 'Hello, table',
-    blurb: 'A scene is just a table. Every row is a shape.',
+    blurb: 'A scene is just a table. Every row is a shape with a 2-vector p.',
     tags: ['start'],
-    code: `/ A scene is a TABLE. One row = one shape.
+    code: `/ A scene is a TABLE. One row = one shape. Position is a 2-vector column p.
 / Ctrl+Enter (or the Run button) draws it.
 bg \`#0e1116
 
@@ -22,8 +22,7 @@ bg \`#0e1116
 u:.p5.w%5
 scene:([]
   shape:\`circle\`circle\`circle\`rect\`text;
-  x:u*1 2 3 4 2.5;
-  y:.p5.cy*0.85 0.85 0.85 0.85 1.6;
+  p:flip(u*1 2 3 4 2.5; .p5.cp[1]*0.85 0.85 0.85 0.85 1.6);
   r:0.28*u;
   w:0.55*u;
   h:0.4*u;
@@ -38,14 +37,16 @@ draw scene`,
     blurb: 'circles, rects, texts, plot — table builders so you can skip the boilerplate.',
     tags: ['start'],
     code: `/ Every helper returns a table. Join them with , and they are one scene.
+/ Positions are 2-vectors: a single point, or a list of points.
 bg \`#0b0e13
 u:.p5.w%6
+cy:.p5.cp[1]
 
-a:circles[u*1 2 3;.p5.cy-40;28;\`#ff6b6b\`#ffd93d\`#6bcb77]
-b:rects[u*4;.p5.cy-40;70;50;\`#4d96ff]
-c:tris[u*5;.p5.cy-40;34;\`#b892ff]
-d:rings[u*1 2 3 4 5;.p5.cy+60;22;\`#2a3b4d]
-e:texts[.p5.cx;.p5.cy+140;"circles rects tris rings texts";13]
+a:circles[flip(u*1 2 3;3#cy-40);28;\`#ff6b6b\`#ffd93d\`#6bcb77]
+b:rects[(u*4;cy-40);70;50;\`#4d96ff]
+c:tris[(u*5;cy-40);34;\`#b892ff]
+d:rings[flip(u*1 2 3 4 5;5#cy+60);22;\`#2a3b4d]
+e:texts[.p5.cp+0 140f;"circles rects tris rings texts";13]
 
 / one scene, drawn once
 draw a,b,c,d,e`,
@@ -62,32 +63,30 @@ walk:sums (300?1.0)-0.5
 lines2:plot (walk; 20 mavg walk)     / one scale, two colours
 dots:scatter[til 300;walk;2;\`#1f6feb]
 
-draw dots,lines2,texts[130;24;"random walk (blue) + 20-point moving average (pink)";12]`,
+draw dots,lines2,texts[130 24f;"random walk (blue) + 20-point moving average (pink)";12]`,
   },
   {
     id: 'steer',
     title: 'Keyboard: steer a ship',
-    blurb: 'pressed`left / .p5.keys — arrow keys or WASD, with a trail.',
+    blurb: 'pressed`left / .p5.keys — arrow keys or WASD, with a glowing trail.',
     tags: ['input', 'state'],
     code: `/ Click the canvas once, then use the arrow keys (or WASD).
-/ Two parameters, so frame is handed back whatever it returned last time.
+/ State is p (position) and v (velocity) — classic integrate: v+=a; p+=v.
 bg \`#07090d
-init:\`x\`y\`vx\`vy\`trail!(.p5.cx;.p5.cy;0f;0f;())
+init:\`p\`v\`trail!(.p5.cp;0 0f;())
 
 frame:{[s;t]
-  ax:0.5*(pressed[\`right]|pressed[\`d])-pressed[\`left]|pressed \`a;
-  ay:0.5*(pressed[\`down]|pressed[\`s])-pressed[\`up]|pressed \`w;
+  a:(0.5*(pressed[\`right]|pressed[\`d])-pressed[\`left]|pressed \`a;
+      0.5*(pressed[\`down]|pressed[\`s])-pressed[\`up]|pressed \`w);
   boost:1+pressed \`space;
-  s[\`vx]:0.95*s[\`vx]+ax*boost;
-  s[\`vy]:0.95*s[\`vy]+ay*boost;
-  s[\`x]:(s[\`x]+s\`vx) mod .p5.w;
-  s[\`y]:(s[\`y]+s\`vy) mod .p5.h;
-  s[\`trail]:(-120) sublist s[\`trail],enlist(s\`x;s\`y);
+  s[\`v]:0.95*s[\`v]+a*boost;
+  s[\`p]:(s[\`p]+s\`v) mod .p5.wh;
+  s[\`trail]:(-120) sublist s[\`trail],enlist s\`p;
 
   n:count s\`trail;
-  if[n; draw circles[s[\`trail][;0];s[\`trail][;1];1+3*(til n)%n;\`#1f6feb]];
-  draw circles[s\`x;s\`y;13;\`gold];
-  draw texts[90;24;"keys: ",", " sv string .p5.keys;12];
+  if[n; draw circles[s\`trail;1+3*(til n)%n;\`#1f6feb]];
+  draw circles[s\`p;13;\`gold];
+  draw texts[90 24f;"keys: ",", " sv string .p5.keys;12];
   s }`,
   },
   {
@@ -95,16 +94,16 @@ frame:{[s;t]
     title: 'Mouse: finger painting',
     blurb: 'Drag on the canvas. Every dot is a row appended to a table.',
     tags: ['input', 'state'],
-    code: `/ Hold the mouse (or a finger) down and drag.
+    code: `/ Hold the mouse (or a finger) down and drag. .p5.mp is the mouse 2-vector.
 bg \`#0b0e13
-init:([] x:\`float$(); y:\`float$(); r:\`float$(); c:\`symbol$())
+init:([] p:(); r:\`float$(); c:\`symbol$())
 
 frame:{[s;t]
   if[.p5.down;
-    s:(-600) sublist s upsert (.p5.mx; .p5.my; 6+10*abs sin 2*t; hsv[0.1*t;0.65;1]) ];
+    s:(-600) sublist s upsert (.p5.mp; 6+10*abs sin 2*t; hsv[0.1*t;0.65;1]) ];
   draw $[count s;
-         fade[circles[s\`x;s\`y;s\`r;s\`c];0.75];
-         texts[.p5.cx;.p5.cy;"drag to paint";18]];
+         fade[circles[s\`p;s\`r;s\`c];0.75];
+         texts[.p5.cp;"drag to paint";18]];
   s }`,
   },
   {
@@ -126,7 +125,7 @@ px:100f
   if[400<count trade; trade::-400#trade];
   n:count trade;
   chart:$[n>20; plot (trade\`px; 20 mavg trade\`px); plot trade\`px];
-  hud:texts[110;24;"tick ",string[n]," px ",string 0.01*floor 100*px;13];
+  hud:texts[110 24f;"tick ",string[n]," px ",string 0.01*floor 100*px;13];
   draw chart,hud }`,
   },
   {
@@ -138,14 +137,14 @@ px:100f
 bg \`black
 W:130; H:95
 zs:.c.grid[W;H;.c.z[-1.7;-1.2];.c.z[1.7;1.2]]   / the complex plane
-xy:grid[W;H]                                    / where to draw each one
+xy:grid[W;H]                                    / where to draw each one (p column)
 cw:.p5.w%W; ch:.p5.h%H
 
 frame:{[t]
   c:.c.polar[0.7885;0.25*t];                    / c walks round a circle
   n:.c.escape[zs;c;48];                         / iterations survived
   s:update n:n, v:(n%48) xexp 0.45 from xy;     / gamma for contrast
-  draw select shape:\`rect, x:cw*(0.5+x), y:ch*(0.5+y), w:cw+1, h:ch+1,
+  draw select shape:\`rect, p:flip(cw*(0.5+p[;0]);ch*(0.5+p[;1])), w:cw+1, h:ch+1,
               fill:?[n=48;\`#05060a;hsv[0.55+0.45*v;0.85;0.15+0.85*v]] from s }`,
   },
   {
@@ -162,18 +161,18 @@ frame:{[t]
   w:.c.add[.c.mul[zs;zs];.c.polar[0.9;0.4*t]];  / z^2 + a rotating constant
   w:.c.add[w;.c.mul[.c.inv .c.add[zs;.c.z[1.2;0]];0.35]];
   s:0.2*.p5.h;
-  draw points[.p5.cx+s*.c.re w; .p5.cy+s*.c.im w; hsv[hue;0.7;1]] }`,
+  draw points[(.p5.cp)+/:flip(s*.c.re w;s*.c.im w); hsv[hue;0.7;1]] }`,
   },
   {
     id: 'grid',
     title: 'Grid of dots',
     blurb: 'til, cross and update: build a lattice, colour it by position.',
     tags: ['start', 'tables'],
-    code: `/ grid[nx;ny] is a table of coordinates - it is just a cross join.
+    code: `/ grid[nx;ny] is a table of 2-vector coordinates - it is just a cross join.
 bg \`#0b0e13
 
 g:grid[16;10]
-g:update x:40+40*x, y:40+40*y from g
+g:update p:40+40*p from g
 g:update r:6+4*sin[0.35*i], fill:hsv[i%40;0.6;1] from g
 
 draw g`,
@@ -190,14 +189,13 @@ bg \`#080b10
 n:90
 frame:{[t]
   i:til n;
-  x:(.p5.w%n)*0.5+i;
-  y:.p5.cy+120*sin[(0.15*i)+3*t];
-  draw circles[x; y; 4+3*sin[(0.3*i)-2*t]; hsv[(i%n)+0.1*t;0.65;1]] }`,
+  p:flip((.p5.w%n)*0.5+i; .p5.cp[1]+120*sin[(0.15*i)+3*t]);
+  draw circles[p; 4+3*sin[(0.3*i)-2*t]; hsv[(i%n)+0.1*t;0.65;1]] }`,
   },
   {
     id: 'orbit',
     title: 'Mouse orbit',
-    blurb: 'Interactivity: .p5.mx and .p5.my are ordinary q variables.',
+    blurb: 'Interactivity: .p5.mp is an ordinary q 2-vector.',
     tags: ['animation', 'input'],
     code: `bg \`#0a0d13
 
@@ -205,10 +203,9 @@ frame:{[t]
   k:til 24;
   a:(2*pi*k%24)+0.6*t;
   d:60+40*sin[t+k];
-  p:polar[d;a];
-  ring:update x:.p5.mx+x, y:.p5.my+y, r:5+3*cos[t*2+k],
-              fill:hsv[(k%24)+0.05*t;0.7;1] from p;
-  cursor:rings[.p5.mx; .p5.my; 100+20*sin 2*t; \`#2a3b4d];
+  ring:update p:(.p5.mp)+/:p, r:5+3*cos[t*2+k],
+              fill:hsv[(k%24)+0.05*t;0.7;1] from polar[d;a];
+  cursor:rings[.p5.mp; 100+20*sin 2*t; \`#2a3b4d];
   draw ring,cursor }`,
   },
   {
@@ -225,7 +222,7 @@ t:([] i:til n; px:px)
 t:update x:remap[i;0;n-1;40;.p5.w-40], y:remap[px;min px;max px;.p5.h-60;60] from t
 
 trace:([] shape:\`path; pts:enlist flip (t\`x;t\`y); stroke:\`#5ec2ff; sw:2)
-dots:select shape:\`circle, x, y, r:2, fill:\`#1f6feb from t where 0=i mod 8
+dots:select shape:\`circle, p:flip(x;y), r:2, fill:\`#1f6feb from t where 0=i mod 8
 draw trace,dots`,
   },
   {
@@ -249,9 +246,8 @@ lo:min c\`l; hi:max c\`h
 sy:{[v;lo;hi] remap[v;lo;hi;.p5.h-40;40]}
 w:(.p5.w-80)%(count c)*1.6
 
-wick:([] shape:\`line; x:xs; y:sy[c\`h;lo;hi]; x2:xs; y2:sy[c\`l;lo;hi]; stroke:\`#8fa1b3)
-body:([] shape:\`rect; x:xs;
-        y:0.5*sy[c\`o;lo;hi]+sy[c\`c;lo;hi];
+wick:([] shape:\`line; p:flip(xs;sy[c\`h;lo;hi]); p2:flip(xs;sy[c\`l;lo;hi]); stroke:\`#8fa1b3)
+body:([] shape:\`rect; p:flip(xs;0.5*sy[c\`o;lo;hi]+sy[c\`c;lo;hi]);
         w:w; h:1|abs sy[c\`o;lo;hi]-sy[c\`c;lo;hi];
         fill:?[c[\`c]>c\`o;\`#26a65b;\`#e5484d])
 draw wick,body`,
@@ -276,7 +272,7 @@ frame:{[s;t]
   s:$[0=.p5.f mod 6; gen s; s];        / ten generations a second, not sixty
   cell:.p5.h%N;
   g:update on:raze s from grid[N;N];
-  draw select shape:\`rect, x:cell*(0.5+x), y:cell*(0.5+y), w:cell-2, h:cell-2,
+  draw select shape:\`rect, p:cell*(0.5+p), w:cell-2, h:cell-2,
               fill:\`#7ee787 from g where on;
   s }`,
   },
@@ -289,8 +285,7 @@ frame:{[s;t]
 n:900
 frame:{[t]
   k:til n;
-  p:polar[6*sqrt k; (k*2.399963)+0.15*t];
-  draw circles[.p5.cx+p\`x; .p5.cy+p\`y; 1.5+3*k%n; hsv[(k%n)+0.05*t;0.7;1]] }`,
+  draw circles[(.p5.cp)+/:(polar[6*sqrt k;(k*2.399963)+0.15*t]\`p); 1.5+3*k%n; hsv[(k%n)+0.05*t;0.7;1]] }`,
   },
   {
     id: 'lissajous',
@@ -301,8 +296,8 @@ frame:{[t]
 n:600
 frame:{[t]
   u:(2*pi)*(til n)%n;
-  x:.p5.cx+(0.36*.p5.w)*sin[3*u+0.3*t];
-  y:.p5.cy+(0.36*.p5.h)*sin[4*u];
+  x:.p5.cp[0]+(0.36*.p5.w)*sin[3*u+0.3*t];
+  y:.p5.cp[1]+(0.36*.p5.h)*sin[4*u];
   draw path[x; y; hsv[0.1*t;0.6;1]] }`,
   },
   {
@@ -324,7 +319,7 @@ rows:rowStep\\[70;r0]
 cell:.p5.w%W
 g:grid[W;count rows]
 g:update on:raze rows from g
-draw select shape:\`rect, x:cell*0.5+x, y:cell*0.5+y, w:cell, h:cell, fill:\`#c8f7c5 from g where on`,
+draw select shape:\`rect, p:cell*(0.5+p), w:cell, h:cell, fill:\`#c8f7c5 from g where on`,
   },
   {
     id: 'sortviz',
@@ -342,7 +337,7 @@ frame:{[s;t]
     j:j where 0=j mod 2;
     s:@[s;j,j+1;:;s[j+1],s j] ];
   w:.p5.w%n;
-  draw rects[w*0.5+til n; .p5.h-0.5*s*3; w-2; s*3; hsv[s%140;0.6;1]];
+  draw rects[flip(w*0.5+til n; .p5.h-0.5*s*3); w-2; s*3; hsv[s%140;0.6;1]];
   s }`,
   },
   {
@@ -358,32 +353,33 @@ notes:16?scale
 score:([] f:notes; t:0.18*til 16; d:0.22; amp:0.18)
 play score
 
-draw update shape:\`circle, x:remap[t;0;max t;50;.p5.w-50],
-            y:remap[f;min f;max f;.p5.h-60;60],
+draw update shape:\`circle, p:flip(remap[t;0;max t;50;.p5.w-50];remap[f;min f;max f;.p5.h-60;60]),
             r:14, fill:hsv[(f%440);0.6;1] from score`,
   },
   {
     id: 'flow',
     title: 'Noise flow field',
-    blurb: 'Perlin noise, vectorised over a whole table of particles.',
+    blurb: 'Perlin noise drives acceleration; particles integrate v+=a, p+=v.',
     tags: ['animation', 'state'],
-    code: `bg \`#06080c
+    code: `/ Showcase: a table of particles with p and v. Noise → accel → velocity → position.
+bg \`#06080c
 n:500
-init:([] x:n?800f; y:n?600f)
+init:([] p:flip(n?.p5.w;n?.p5.h); v:flip(n#0f;n#0f))
 
 frame:{[s;t]
-  a:(2*pi)*noise[0.005*s\`x;0.005*s\`y;0.12*t];
-  s:update x:x+2.2*cos a, y:y+2.2*sin a from s;
-  s:update x:x mod .p5.w, y:y mod .p5.h from s;
+  a:(2*pi)*noise[0.005*s[\`p][;0];0.005*s[\`p][;1];0.12*t];
+  s:update v:0.92*v+flip(0.55*cos a;0.55*sin a) from s;
+  s:update p:p+v from s;
+  s:update p:p mod\\: .p5.wh from s;
   keep:0.985>n?1.0;                            / respawn a few each frame
-  s:update x:?[keep;x;n?.p5.w], y:?[keep;y;n?.p5.h] from s;
-  draw fade[circles[s\`x; s\`y; 1.6; hsv[0.55+0.15*(s\`x)%.p5.w;0.5;1]];0.8];
+  s:update p:?[keep;p;flip(n?.p5.w;n?.p5.h)], v:?[keep;v;flip(n#0f;n#0f)] from s;
+  draw fade[circles[s\`p; 1.6; hsv[0.55+0.15*(s[\`p][;0])%.p5.w;0.5;1]];0.8];
   s }`,
   },
   {
     id: 'bars',
     title: 'Group by, drawn',
-    blurb: 'A bar chart is select ... by ... plus four columns of geometry.',
+    blurb: 'A bar chart is select ... by ... plus geometry in a p column.',
     tags: ['qsql', 'tables'],
     code: `bg \`#0b0e13
 n:400
@@ -393,10 +389,11 @@ agg:0!select total:sum sz by sym from t
 agg:update i:til count agg from agg
 h:remap[agg\`total;0;max agg\`total;0;.p5.h-120]
 w:(.p5.w-60)%1.4*count agg
+xs:40+w*1.4*agg\`i
 
-bars:([] shape:\`rect; x:40+w*1.4*agg\`i; y:.p5.h-50-0.5*h; w:w; h:h; fill:pal[\`kdb] agg\`i)
-labs:([] shape:\`text; x:40+w*1.4*agg\`i; y:.p5.h-30; txt:string agg\`sym; size:12; fill:\`#8fa1b3)
-vals:([] shape:\`text; x:40+w*1.4*agg\`i; y:.p5.h-70-h; txt:string agg\`total; size:11; fill:\`#dfe7ef)
+bars:([] shape:\`rect; p:flip(xs; .p5.h-50-0.5*h); w:w; h:h; fill:pal[\`kdb] agg\`i)
+labs:([] shape:\`text; p:flip(xs; count[xs]#.p5.h-30); txt:string agg\`sym; size:12; fill:\`#8fa1b3)
+vals:([] shape:\`text; p:flip(xs; .p5.h-70-h); txt:string agg\`total; size:11; fill:\`#dfe7ef)
 draw bars,labs,vals`,
   },
 ];

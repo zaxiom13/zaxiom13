@@ -285,7 +285,7 @@ export class SketchRuntime {
     if (!isTable(v) && !isDict(v)) return false;
     const cols = isTable(v) ? (v as QTable).c : ((v as any).k?.v as string[]) ?? [];
     if (!Array.isArray(cols)) return false;
-    if (!cols.some((c) => ['x', 'y', 'shape', 'pts', 'r'].includes(c))) return false;
+    if (!cols.some((c) => ['p', 'shape', 'pts', 'r'].includes(c))) return false;
     this.lastDrawn = v;
     this.mode = 'static';
     this.mount();
@@ -429,8 +429,8 @@ export class SketchRuntime {
     g.set('.p5.f', long(this.frameNo));
     g.set('.p5.w', float(p.width));
     g.set('.p5.h', float(p.height));
-    g.set('.p5.cx', float(p.width / 2));
-    g.set('.p5.cy', float(p.height / 2));
+    g.set('.p5.wh', floatvec([p.width, p.height]));
+    g.set('.p5.cp', floatvec([p.width / 2, p.height / 2]));
     // before the pointer has ever been over the canvas, pretend it is centred
     if (p.mouseX !== 0 || p.mouseY !== 0) this.pointerSeen = true;
     const inside =
@@ -439,8 +439,9 @@ export class SketchRuntime {
       p.mouseY >= 0 &&
       p.mouseX <= p.width &&
       p.mouseY <= p.height;
-    g.set('.p5.mx', float(inside ? p.mouseX : p.width / 2));
-    g.set('.p5.my', float(inside ? p.mouseY : p.height / 2));
+    const mx = inside ? p.mouseX : p.width / 2;
+    const my = inside ? p.mouseY : p.height / 2;
+    g.set('.p5.mp', floatvec([mx, my]));
     g.set('.p5.down', bool(!!(p as any).mouseIsPressed));
     const keys = [...this.keys].sort();
     g.set('.p5.keys', symvec(keys));
@@ -449,23 +450,17 @@ export class SketchRuntime {
     g.set(
       '.p5.mouse',
       dict(
-        symvec(['x', 'y', 'down', 'clicks']),
-        listFrom([
-          float(inside ? p.mouseX : p.width / 2),
-          float(inside ? p.mouseY : p.height / 2),
-          bool(!!(p as any).mouseIsPressed),
-          long(this.clicks),
-        ])
+        symvec(['p', 'down', 'clicks']),
+        listFrom([floatvec([mx, my]), bool(!!(p as any).mouseIsPressed), long(this.clicks)])
       )
     );
     const touches = (p as any).touches as { x: number; y: number; id: number }[];
     g.set(
       '.p5.touch',
       table(
-        ['x', 'y', 'id'],
+        ['p', 'id'],
         [
-          floatvec(touches.map((tt) => tt.x)),
-          floatvec(touches.map((tt) => tt.y)),
+          listFrom(touches.map((tt) => floatvec([tt.x, tt.y]))),
           longvec(touches.map((tt, i) => i)),
         ]
       )
@@ -541,7 +536,7 @@ export class SketchRuntime {
       },
       'Put a scene on the canvas. The only way to draw anything, and it returns what you gave it.',
       'draw scene',
-      ['draw ([] x:100 200; y:100 100; r:40 25; fill:`gold`crimson)']
+      ['draw ([] p:(100 100f;200 100f); r:40 25; fill:`gold`crimson)']
     );
 
     def(
@@ -654,17 +649,15 @@ export class SketchRuntime {
         const rs = nums(r),
           ts = nums(th);
         const n = Math.max(rs.length, ts.length);
-        const xs = new Array(n),
-          ys = new Array(n);
+        const pts: QValue[] = [];
         for (let i = 0; i < n; i++) {
           const R = rs[i % rs.length],
             T = ts[i % ts.length];
-          xs[i] = R * Math.cos(T);
-          ys[i] = R * Math.sin(T);
+          pts.push(floatvec([R * Math.cos(T), R * Math.sin(T)]));
         }
-        return table(['x', 'y'], [floatvec(xs), floatvec(ys)]);
+        return table(['p'], [listFrom(pts)]);
       },
-      'Polar to cartesian: returns a table with x and y columns.',
+      'Polar to cartesian: returns a table with a 2-vector column p.',
       'polar[radius;angle]',
       ['polar[100;(2*3.14159)*(til 8)%8]']
     );
@@ -675,16 +668,12 @@ export class SketchRuntime {
       (_ip, [nx, ny]) => {
         const cx = Math.max(0, Math.trunc(N(nx)));
         const cy = Math.max(0, Math.trunc(N(ny)));
-        const xs: number[] = [],
-          ys: number[] = [];
+        const pts: QValue[] = [];
         for (let j = 0; j < cy; j++)
-          for (let i = 0; i < cx; i++) {
-            xs.push(i);
-            ys.push(j);
-          }
-        return table(['x', 'y'], [longvec(xs), longvec(ys)]);
+          for (let i = 0; i < cx; i++) pts.push(longvec([i, j]));
+        return table(['p'], [listFrom(pts)]);
       },
-      'A table of grid coordinates (the cross of til nx and til ny).',
+      'A table of grid coordinates as 2-vectors (the cross of til nx and til ny).',
       'grid[nx;ny]',
       ['grid[3;2]']
     );
@@ -782,25 +771,48 @@ export class SketchRuntime {
         doc
       );
 
-    imm('circle', [3], (p, [x, y, r]) => p.circle(N(x), N(y), 2 * N(r)), 'Draw a circle.');
-    imm('line', [4], (p, [x, y, x2, y2]) => p.line(N(x), N(y), N(x2), N(y2)), 'Draw a line.');
+    const xy = (v: QValue): [number, number] => {
+      const a = nums(v);
+      return [a[0] ?? 0, a[1] ?? 0];
+    };
+    imm(
+      'circle',
+      [2],
+      (p, [pt, r]) => {
+        const [x, y] = xy(pt);
+        p.circle(x, y, 2 * N(r));
+      },
+      'Draw a circle at a 2-vector.'
+    );
+    imm(
+      'line',
+      [2],
+      (p, [a, b]) => {
+        const [x, y] = xy(a);
+        const [x2, y2] = xy(b);
+        p.line(x, y, x2, y2);
+      },
+      'Draw a line between two 2-vectors.'
+    );
     imm(
       'rect',
-      [4],
-      (p, [x, y, w, h]) => {
+      [3],
+      (p, [pt, w, h]) => {
+        const [x, y] = xy(pt);
         p.rectMode(p.CENTER);
-        p.rect(N(x), N(y), N(w), N(h));
+        p.rect(x, y, N(w), N(h));
       },
-      'Draw a rectangle centred at x,y.'
+      'Draw a rectangle centred at a 2-vector.'
     );
     imm(
       'text',
-      [3],
-      (p, [s, x, y]) => {
+      [2],
+      (p, [s, pt]) => {
+        const [x, y] = xy(pt);
         p.textAlign(p.CENTER, p.CENTER);
-        p.text(isAtom(s) ? String((s as QAtom).v) : String((s as QVector).v), N(x), N(y));
+        p.text(isAtom(s) ? String((s as QAtom).v) : String((s as QVector).v), x, y);
       },
-      'Draw text.'
+      'Draw text at a 2-vector.'
     );
     imm(
       'fill',
@@ -871,22 +883,35 @@ export class SketchRuntime {
       '.p5.f': () => long(this.frameNo),
       '.p5.w': () => float(this.p?.width ?? this.size().w),
       '.p5.h': () => float(this.p?.height ?? this.size().h),
-      '.p5.cx': () => float((this.p?.width ?? this.size().w) / 2),
-      '.p5.cy': () => float((this.p?.height ?? this.size().h) / 2),
-      '.p5.mx': () => float(this.pointerSeen ? this.p?.mouseX ?? 0 : (this.p?.width ?? 800) / 2),
-      '.p5.my': () => float(this.pointerSeen ? this.p?.mouseY ?? 0 : (this.p?.height ?? 600) / 2),
+      '.p5.wh': () => {
+        const w = this.p?.width ?? this.size().w;
+        const h = this.p?.height ?? this.size().h;
+        return floatvec([w, h]);
+      },
+      '.p5.cp': () => {
+        const w = this.p?.width ?? this.size().w;
+        const h = this.p?.height ?? this.size().h;
+        return floatvec([w / 2, h / 2]);
+      },
+      '.p5.mp': () => {
+        const w = this.p?.width ?? 800;
+        const h = this.p?.height ?? 600;
+        return floatvec([
+          this.pointerSeen ? this.p?.mouseX ?? w / 2 : w / 2,
+          this.pointerSeen ? this.p?.mouseY ?? h / 2 : h / 2,
+        ]);
+      },
       '.p5.down': () => bool(!!(this.p as any)?.mouseIsPressed),
-      '.p5.touch': () => table(['x', 'y', 'id'], [floatvec([]), floatvec([]), longvec([])]),
+      '.p5.touch': () => table(['p', 'id'], [listFrom([]), longvec([])]),
       '.p5.scene': () => this.lastScene,
       '.p5.keys': () => symvec([...this.keys].sort()),
       '.p5.key': () => sym(this.lastKey),
       '.p5.clicks': () => long(this.clicks),
       '.p5.mouse': () =>
         dict(
-          symvec(['x', 'y', 'down', 'clicks']),
+          symvec(['p', 'down', 'clicks']),
           listFrom([
-            float(this.p?.mouseX ?? 0),
-            float(this.p?.mouseY ?? 0),
+            floatvec([this.p?.mouseX ?? 0, this.p?.mouseY ?? 0]),
             bool(!!(this.p as any)?.mouseIsPressed),
             long(this.clicks),
           ])

@@ -184,17 +184,17 @@ const SNIPPETS: { label: string; detail: string; body: string }[] = [
   {
     label: 'frame',
     detail: 'animation: draw every frame',
-    body: 'frame:{[t]\n  i:til 30;\n  draw circles[20+22*i; .p5.cy+90*sin[t+0.3*i]; 8; hsv[i%30;0.6;1]] }',
+    body: 'frame:{[t]\n  i:til 30;\n  draw circles[flip (20+22*i;.p5.cp[1]+90*sin[t+0.3*i]); 8; hsv[i%30;0.6;1]] }',
   },
   {
     label: 'framestate',
     detail: 'animation with state: frame[s;t]',
-    body: 'init:([] x:100?800f; y:100?600f)\nframe:{[s;t]\n  s:update x:(x+1) mod .p5.w from s;\n  draw circles[s`x; s`y; 3; `#7dd3fc];\n  s }',
+    body: 'init:([] p:flip(100?800f;100?600f); v:flip(100#1f;100#0f))\nframe:{[s;t]\n  s:update p:p+v from s;\n  s:update p:p mod\\: .p5.wh from s;\n  draw circles[s`p; 3; `#7dd3fc];\n  s }',
   },
   {
     label: 'timer',
     detail: 'kdb+ style timer: \\t and .z.ts',
-    body: '\\t 250\n.z.ts:{[t]\n  / runs every 250ms\n  draw circles[.p5.cx;.p5.cy;40] }',
+    body: '\\t 250\n.z.ts:{[t]\n  / runs every 250ms\n  draw circles[.p5.cp;40] }',
   },
   {
     label: 'select',

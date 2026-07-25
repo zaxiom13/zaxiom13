@@ -21,9 +21,9 @@ const setCode = async (code) => {
 await setCode(`bg \`#0a0d13
 frame:{[t]
   k:til 16;
-  p:polar[70;(2*pi*k%16)+t];
-  draw circles[.p5.mx+p\`x; .p5.my+p\`y; 8; hsv[k%16;0.7;1]];
-  draw texts[.p5.mx;.p5.my-110;"mx=",string[floor .p5.mx],"  my=",string floor .p5.my] }`);
+  p:polar[70;(2*pi*k%16)+t]\`p;
+  draw circles[(.p5.mp)+/:p; 8; hsv[k%16;0.7;1]];
+  draw texts[.p5.mp+0 -110f;"mp=","," sv string floor .p5.mp] }`);
 
 const box = await page.$eval('#canvas', (el) => {
   const r = el.getBoundingClientRect();
@@ -40,30 +40,27 @@ for (const [dx, dy, name] of [
   const pos = await page.evaluate(() => {
     const ip = window.qip;
     const g = (n) => ip.globals.get(n)?.v;
-    return { mx: Math.round(g('.p5.mx')), my: Math.round(g('.p5.my')) };
+    return { mp: g('.p5.mp') };
   });
   console.log(name, pos);
 }
 
 // ---- keyboard -------------------------------------------------------------
 await setCode(`bg \`#07090d
-init:\`x\`y\`vx\`vy\`trail!(400f;300f;0f;0f;())
+init:\`p\`v\`trail!(400 300f;0 0f;())
 frame:{[s;t]
-  ax:0.55*(pressed[\`right]-pressed \`left);
-  ay:0.55*(pressed[\`down]-pressed \`up);
-  s[\`vx]:0.94*s[\`vx]+ax;
-  s[\`vy]:0.94*s[\`vy]+ay;
-  s[\`x]:(s[\`x]+s\`vx) mod .p5.w;
-  s[\`y]:(s[\`y]+s\`vy) mod .p5.h;
-  s[\`trail]:(-90) sublist s[\`trail],enlist(s\`x;s\`y);
-  if[count s\`trail; draw circles[s[\`trail][;0];s[\`trail][;1];2;\`#1f6feb]];
-  draw circles[s\`x;s\`y;14;\`gold];
-  draw texts[70;24;"keys: ",", " sv string .p5.keys;12];
+  a:(0.55*(pressed[\`right]-pressed \`left); 0.55*(pressed[\`down]-pressed \`up));
+  s[\`v]:0.94*s[\`v]+a;
+  s[\`p]:(s[\`p]+s\`v) mod .p5.wh;
+  s[\`trail]:(-90) sublist s[\`trail],enlist s\`p;
+  if[count s\`trail; draw circles[s\`trail;2;\`#1f6feb]];
+  draw circles[s\`p;14;\`gold];
+  draw texts[70 24f;"keys: ",", " sv string .p5.keys;12];
   s }`);
 
 await page.mouse.click(box.x + box.w / 2, box.y + box.h / 2); // focus away from the editor
 await page.waitForTimeout(200);
-const before = await page.evaluate(() => window.qeval('floor (state`x;state`y)'));
+const before = await page.evaluate(() => window.qeval('floor state`p'));
 await page.keyboard.down('ArrowRight');
 await page.waitForTimeout(900);
 await page.keyboard.up('ArrowRight');
@@ -72,7 +69,7 @@ await page.waitForTimeout(700);
 await page.keyboard.up('ArrowDown');
 await page.waitForTimeout(300);
 const after = await page.evaluate(() => ({
-  pos: window.qeval('floor (state`x;state`y)'),
+  pos: window.qeval('floor state`p'),
   keys: [...window.qrt.keys],
 }));
 await (await page.$('#canvas-wrap')).screenshot({ path: `${out}/keys.png` });
@@ -88,7 +85,7 @@ px:100f
   px::px+0.6*(rand 1.0)-0.5;
   \`trade insert (\`time$now; px);
   if[500<count trade; trade::-500#trade];
-  draw plot[til count trade; trade\`px], texts[90;24;"ticks: ",string count trade;12] }`);
+  draw plot[til count trade; trade\`px], texts[90 24f;"ticks: ",string count trade;12] }`);
 await page.waitForTimeout(2600);
 const ticks = await page.evaluate(() => window.qeval('count trade'));
 await (await page.$('#canvas-wrap')).screenshot({ path: `${out}/timer.png` });

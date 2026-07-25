@@ -144,9 +144,26 @@ interface Col {
   n?: number[]; // numeric
   s?: string[]; // symbol / char
   v?: QValue[]; // anything else (nested lists, mixed)
+  /** pre-split 2-vector column → parallel x/y arrays (fast path for `p`) */
+  xy?: [number[], number[]];
   atomNum?: number;
   atomStr?: string;
   atomVal?: QValue;
+}
+
+/** Pull (x,y) out of a 2-vector cell. */
+function pairOf(pt: QValue | undefined, dflt: [number, number] = [0, 0]): [number, number] {
+  if (!pt) return dflt;
+  if (pt.t >= 1 && pt.t <= 9) {
+    const a = (pt as QVector).v as number[];
+    if (a.length >= 2) return [a[0], a[1]];
+  }
+  if (pt.t === 0 && count(pt) >= 2) {
+    const a0 = at(pt, 0) as QAtom;
+    const a1 = at(pt, 1) as QAtom;
+    return [Number(a0.v), Number(a1.v)];
+  }
+  return dflt;
 }
 
 function unbox(col: QValue): Col {
@@ -159,12 +176,35 @@ function unbox(col: QValue): Col {
     // a column of strings ("abc";"de") is common for text
     if (arr.length && arr.every((e) => e.t === 10))
       return { s: arr.map((e) => (e as QVector).v as string) };
+    // a column of 2-vectors → parallel x/y for the renderer
+    if (
+      arr.length &&
+      arr.every(
+        (e) =>
+          (e.t >= 1 && e.t <= 9 && ((e as QVector).v as number[]).length >= 2) ||
+          (e.t === 0 && count(e) >= 2)
+      )
+    ) {
+      const xs = new Array(arr.length);
+      const ys = new Array(arr.length);
+      for (let i = 0; i < arr.length; i++) {
+        const [x, y] = pairOf(arr[i]);
+        xs[i] = x;
+        ys[i] = y;
+      }
+      return { v: arr, xy: [xs, ys] };
+    }
     return { v: arr };
   }
   if (isAtom(col)) {
     const v = (col as QAtom).v;
     if (typeof v === 'string') return { atomStr: v, atomVal: col };
     return { atomNum: typeof v === 'bigint' ? Number(v) : (v as number), atomVal: col };
+  }
+  // a lone 2-vector used as an atom-like column
+  if (t >= 1 && t <= 9) {
+    const a = (col as QVector).v as number[];
+    if (a.length === 2) return { xy: [[a[0]], [a[1]]], v: [col], atomVal: col };
   }
   return { v: [col] };
 }
@@ -216,6 +256,17 @@ const valAt = (c: Col | undefined, i: number): QValue | undefined => {
   if (!c) return undefined;
   if (c.v) return c.v[i];
   return c.atomVal;
+};
+
+/** Read a 2-vector column (`p`, `p2`, …) at row i. */
+const xyAt = (
+  c: Col | undefined,
+  i: number,
+  dflt: [number, number] = [0, 0]
+): [number, number] => {
+  if (!c) return dflt;
+  if (c.xy) return [c.xy[0][i] ?? dflt[0], c.xy[1][i] ?? dflt[1]];
+  return pairOf(valAt(c, i), dflt);
 };
 
 /** Draw one scene table (or a list of them) onto a p5 instance. */
@@ -312,9 +363,10 @@ function fastDraw(
     }
     case 'line': {
       if (st === 'none' && f === 'none') return true;
+      const [x2, y2] = xyAt(cols['p2'], i, [x + 10, y]);
       ctx.beginPath();
       ctx.moveTo(x, y);
-      ctx.lineTo(numAt(cols['x2'], i, x + 10), numAt(cols['y2'], i, y));
+      ctx.lineTo(x2, y2);
       ctx.strokeStyle = cssAlpha(st !== 'none' ? st : f, alpha);
       ctx.lineWidth = numAt(cols['sw'], i, 1);
       ctx.stroke();
@@ -335,8 +387,7 @@ function drawRow(
   ctx: CanvasRenderingContext2D | null = null
 ) {
   const shape = (shapeCol ? strAt(shapeCol, i) : undefined) || 'circle';
-  const x = numAt(cols['x'], i, 0);
-  const y = numAt(cols['y'], i, 0);
+  const [x, y] = xyAt(cols['p'], i);
   const rot = hasAnyRot ? numAt(cols['rot'], i, 0) : 0;
   const hasRot = rot !== 0;
   if (ctx && !hasRot && fastDraw(ctx, shape, cols, i, x, y, opts)) return;
@@ -387,26 +438,22 @@ function drawRow(
     }
     case 'line': {
       style(p, cols, i, opts, false);
-      p.line(px, py, numAt(cols['x2'], i, x + 10) - ox, numAt(cols['y2'], i, y) - oy);
+      const [x2, y2] = xyAt(cols['p2'], i, [x + 10, y]);
+      p.line(px, py, x2 - ox, y2 - oy);
       break;
     }
     case 'tri':
     case 'triangle': {
       style(p, cols, i, opts, true);
       const r = numAt(cols['r'], i, 12);
-      if (cols['x2'] === undefined) {
+      if (cols['p2'] === undefined) {
         const dx = r * 0.8660254037844387; // sin 120
         const dy = r * 0.5;
         p.triangle(px, py - r, px + dx, py + dy, px - dx, py + dy);
       } else {
-        p.triangle(
-          px,
-          py,
-          numAt(cols['x2'], i, 0) - ox,
-          numAt(cols['y2'], i, 0) - oy,
-          numAt(cols['x3'], i, 0) - ox,
-          numAt(cols['y3'], i, 0) - oy
-        );
+        const [x2, y2] = xyAt(cols['p2'], i);
+        const [x3, y3] = xyAt(cols['p3'], i);
+        p.triangle(px, py, x2 - ox, y2 - oy, x3 - ox, y3 - oy);
       }
       break;
     }

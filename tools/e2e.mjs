@@ -81,7 +81,7 @@ await withPage('autocomplete', { viewport: { width: 1280, height: 860 } }, async
   await type('.p5.m');
   let opts = await options();
   ok(
-    opts.some((o) => o.includes('.p5.mx')) && opts.some((o) => o.includes('.p5.mouse')),
+    opts.some((o) => o.includes('.p5.mp')) && opts.some((o) => o.includes('.p5.mouse')),
     `namespace completion missing: ${JSON.stringify(opts.slice(0, 6))}`
   );
 
@@ -162,7 +162,7 @@ await withPage('keyboard', { viewport: { width: 1000, height: 800 } }, async (pa
     return { x: r.x, y: r.y, w: r.width, h: r.height };
   });
   await page.mouse.click(box.x + box.w / 2, box.y + box.h / 2);
-  const read = () => page.evaluate(() => window.qeval('floor (state`x;state`y)'));
+  const read = () => page.evaluate(() => window.qeval('floor state`p'));
   const before = await read();
   await page.keyboard.down('ArrowRight');
   await page.waitForTimeout(800);
@@ -173,7 +173,7 @@ await withPage('keyboard', { viewport: { width: 1000, height: 800 } }, async (pa
   ok(await page.isVisible('#dpad'), 'on-screen pad not shown for a keyboard sketch');
 });
 
-// 7. mouse: the pointer reaches q as .p5.mx / .p5.my
+// 7. mouse: the pointer reaches q as .p5.mp
 await withPage('mouse', { viewport: { width: 1000, height: 800 } }, async (page) => {
   await page.selectOption('#examples', 'orbit');
   await page.waitForTimeout(900);
@@ -183,7 +183,7 @@ await withPage('mouse', { viewport: { width: 1000, height: 800 } }, async (page)
   });
   await page.mouse.move(box.x + box.w * 0.3, box.y + box.h * 0.4);
   await page.waitForTimeout(400);
-  const pos = await page.evaluate(() => window.qeval('floor (.p5.mx;.p5.my)'));
+  const pos = await page.evaluate(() => window.qeval('floor .p5.mp'));
   const [mx, my] = pos.split(' ').map(Number);
   ok(
     Math.abs(mx - box.w * 0.3) < 6 && Math.abs(my - box.h * 0.4) < 6,

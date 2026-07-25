@@ -142,7 +142,7 @@ describe('temporal types', () => {
 
 describe('sketch-facing helpers exist as plain q', () => {
   it('grid is a cross join', () => {
-    expect(run('grid[2;2]')).toBe('x y\n---\n0 0\n1 0\n0 1\n1 1');
+    expect(run('grid[2;2]')).toBe('p\n---\n0 0\n1 0\n0 1\n1 1');
   });
   it('remap rescales', () => {
     expect(run('remap[til 5;0;4;0;100]')).toBe('0 25 50 75 100f');
