@@ -22,8 +22,8 @@ await setCode(`bg \`#0a0d13
 frame:{[t]
   k:til 16;
   p:polar[70;(2*pi*k%16)+t];
-  ring:update x:.p5.mx+x, y:.p5.my+y, r:8, fill:hsv[k%16;0.7;1] from p;
-  ring,texts[.p5.mx;.p5.my-110;"mx=",string[floor .p5.mx],"  my=",string floor .p5.my] }`);
+  draw circles[.p5.mx+p\`x; .p5.my+p\`y; 8; hsv[k%16;0.7;1]];
+  draw texts[.p5.mx;.p5.my-110;"mx=",string[floor .p5.mx],"  my=",string floor .p5.my] }`);
 
 const box = await page.$eval('#canvas', (el) => {
   const r = el.getBoundingClientRect();
@@ -47,8 +47,8 @@ for (const [dx, dy, name] of [
 
 // ---- keyboard -------------------------------------------------------------
 await setCode(`bg \`#07090d
-init:\`x\`y\`vx\`vy\`trail!(400f;300f;0f;0f;()) 
-step:{[s;t]
+init:\`x\`y\`vx\`vy\`trail!(400f;300f;0f;0f;())
+frame:{[s;t]
   ax:0.55*(pressed[\`right]-pressed \`left);
   ay:0.55*(pressed[\`down]-pressed \`up);
   s[\`vx]:0.94*s[\`vx]+ax;
@@ -56,12 +56,10 @@ step:{[s;t]
   s[\`x]:(s[\`x]+s\`vx) mod .p5.w;
   s[\`y]:(s[\`y]+s\`vy) mod .p5.h;
   s[\`trail]:(-90) sublist s[\`trail],enlist(s\`x;s\`y);
-  s }
-view:{[s]
-  tr:$[count s\`trail; circles[s[\`trail][;0];s[\`trail][;1];2;\`#1f6feb]; ()];
-  ship:circles[s\`x;s\`y;14;\`gold];
-  lbl:texts[70;24;"keys: ",", " sv string .p5.keys;12];
-  $[count tr; tr,ship,lbl; ship,lbl] }`);
+  if[count s\`trail; draw circles[s[\`trail][;0];s[\`trail][;1];2;\`#1f6feb]];
+  draw circles[s\`x;s\`y;14;\`gold];
+  draw texts[70;24;"keys: ",", " sv string .p5.keys;12];
+  s }`);
 
 await page.mouse.click(box.x + box.w / 2, box.y + box.h / 2); // focus away from the editor
 await page.waitForTimeout(200);

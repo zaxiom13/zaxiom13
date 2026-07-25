@@ -27,8 +27,8 @@ frame:{[t]
   from the [official kdb+ documentation](https://github.com/KxSystems/docs) is replayed
   against this interpreter and compared character-for-character with what KX prints.
   You can run it yourself from the **Parity** tab in the app.
-- **A drawing layer** (`src/sketch/`) — tables become scenes, four animation styles,
-  shape constructors, pointer/keyboard/touch input, Perlin noise, colour helpers, and a
+- **A drawing layer** (`src/sketch/`) — tables become scenes, one verb (`draw`) and one hook
+  (`frame`), shape constructors, pointer/keyboard/touch input, Perlin noise, colour helpers, and a
   tiny synth so a table can be a musical score. The canvas runtime is ~400 lines of
   canvas-2D (`canvas.ts`); the q-facing namespace is still called `.p5` because it mirrors
   the p5.js API that inspired it.
@@ -119,26 +119,39 @@ circles[100 200;150;30;`crimson`gold] , rects[300;150;70;50;`mint] , texts[200;2
 plot (walk; 20 mavg walk)     / two series, one shared scale
 ```
 
-### Four ways to animate
+### One way to draw, one way to animate
 
-| you define | you get |
-| --- | --- |
-| `frame:{[t] … }` returning a scene | a pure function of time, called ~60×/s |
-| `init`, `step:{[s;t] … }`, `view:{[s] … }` | the animation as a fold over state |
-| `\t 100` and `.z.ts:{[now] … }` | kdb+'s timer — periodic work, exactly as on a server |
-| `draw:{[t] … }` calling `.p5.circle` etc. | classic immediate mode, if you insist |
-
-### Complex numbers
+`draw` is the only thing that puts anything on the canvas. It takes a scene and returns it,
+and you can call it as often as you like — the canvas is wiped once per tick, then everything
+you draw lands on it.
 
 ```q
-.c.str .c.mul[.c.z[1;2];.c.z[3;-1]]     / "5+5i"
-.c.str .c.exp .c.mul[.c.i;pi]           / "-1+1.224647e-16i"
-.c.escape[0;.c.grid[300;200;.c.z[-2.2;-1.2];.c.z[0.8;1.2]];60]   / a Mandelbrot, in one call
+draw circles[100 200;150;30;`gold]          / a still picture
 ```
 
-Everything is vectorised, reals are accepted wherever a complex is, and `.c.tbl` turns a
-complex vector into a table with `re` and `im` columns so `select` and the shape builders
-work on it.
+To animate, put those `draw` calls in a function called `frame`. Its **rank decides what it
+is handed**:
+
+```q
+frame:{[t] draw circles[.p5.cx+100*sin t; .p5.cy; 20; `gold] }        / the time
+
+init:0                                                                 / …and state
+frame:{[s;t] draw circles[.p5.cx; .p5.cy; 1+s mod 100; `gold]; s+1 }
+```
+
+With two parameters, `frame` is handed whatever it returned last tick — the animation is a
+fold over time, seeded by `init`. That is the whole model: **one verb, one hook, two ranks.**
+
+For periodic work at your own rate there is q's own clock, which is the same shape — a
+function on a timer that calls `draw`:
+
+```q
+\t 100
+.z.ts:{[now] px::px+0.5*(rand 1.0)-0.5; `trade insert (`time$now;px); draw plot trade`px }
+```
+
+`frame` and `.z.ts` can run together. The live state is in the global `state`, and
+`.p5.scene` holds everything drawn during the previous tick.
 
 ### Input
 
