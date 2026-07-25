@@ -1,10 +1,20 @@
 {
-  "name": "workspace",
-  "version": "1.0.0",
-  "description": "Hi, I am Gulam Zakaria Zahid, but you can call me Zak.",
+  "name": "q-sketch",
+  "version": "0.1.0",
+  "description": "A client-side q/kdb+ interpreter wired to p5.js: learn q through creative coding.",
   "main": "index.js",
   "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1"
+    "dev": "vite",
+    "build": "vite build",
+    "preview": "vite preview",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "parity": "tsx tools/parity.mjs",
+    "parity:report": "tsx tools/parity.mjs --group --fail 40",
+    "corpus": "node tools/scrape-corpus.mjs /tmp/kxdocs > parity/corpus.json && node tools/make-suite.mjs",
+    "q": "tsx tools/q.mjs",
+    "shots": "node tools/shot.mjs",
+    "typecheck": "tsc --noEmit"
   },
   "repository": {
     "type": "git",
@@ -37,5 +47,7 @@
     "codemirror": "^6.0.2",
     "lz-string": "^1.5.0",
     "p5": "^2.3.1"
-  }
+  },
+  "private": true,
+  "type": "module"
 }
