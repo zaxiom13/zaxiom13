@@ -5,7 +5,7 @@
 // keeps sequences intact and only resolves the syntax that *is* structural:
 // brackets, lambdas, literals, control words and qSQL.
 
-import { lex, Tok, QSQL_WORDS, CONTROL_WORDS } from './lexer';
+import { lex, Tok, QSQL_WORDS, CONTROL_WORDS, daysFromEpoch } from './lexer';
 import { QError, QValue, atom, vec, typedVec, listFrom, NIL, str, sym, symvec } from './value';
 
 export type Node =
@@ -641,7 +641,7 @@ export function mergeNums(toks: Tok[]): QValue {
   const explicit = toks.filter((t) => t.x).map((t) => Math.abs(t.t!));
   if (explicit.length) {
     const rt2 = explicit[explicit.length - 1];
-    const out2 = vals.map((v, ix) => coerceLit(v, types[ix], rt2));
+    const out2 = vals.map((v, ix) => coerceLit(v, types[ix], rt2, toks[ix]?.s));
     return toks.length === 1 && toks[0].t! < 0 ? atom(-rt2, out2[0]) : typedVec(rt2, out2);
   }
   let rt = types[0];
@@ -651,14 +651,23 @@ export function mergeNums(toks: Tok[]): QValue {
     else if (ty >= 12 || rt >= 12) rt = Math.max(ty, rt);
     else rt = 9;
   }
-  const out = vals.map((v, ix) => coerceLit(v, types[ix], rt));
+  const out = vals.map((v, ix) => coerceLit(v, types[ix], rt, toks[ix]?.s));
   const single = toks.length === 1 && toks[0].t! < 0;
   if (single) return atom(-rt, out[0]);
   return typedVec(rt, out);
 }
 
-function coerceLit(v: any, from: number, to: number): any {
+function coerceLit(v: any, from: number, to: number, src?: string): any {
   if (from === to) return v;
+  // 2017.05 2017.09m : the suffix makes the earlier literals months too
+  if (to === 13 && from === 9 && src) {
+    const m = /^(\d{4})\.(\d{1,2})$/.exec(src);
+    if (m) return (+m[1] - 2000) * 12 + (+m[2] - 1);
+  }
+  if ((to === 14 || to === 12) && from === 9 && src) {
+    const m = /^(\d{4})\.(\d{1,2})\.(\d{1,2})$/.exec(src);
+    if (m) return daysFromEpoch(+m[1], +m[2], +m[3]);
+  }
   if (to === 12 || to === 16) {
     if (typeof v === 'bigint') return v;
     if (v === -9223372036854775808) return -9223372036854775808n;

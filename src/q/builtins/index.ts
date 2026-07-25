@@ -551,9 +551,19 @@ export function installBuiltins(ip: Interp) {
       for (let i = 0; i < d[0]; i++) out.push(build(d.slice(1)));
       return listFrom(out);
     };
-    if (dims.some((d) => Number.isNaN(d) || d === NULL_LONG)) {
-      // 0N#x : cut into as many as fit
-      const known = dims.filter((d) => !Number.isNaN(d) && d !== NULL_LONG);
+    const isNull = (d: number) => Number.isNaN(d) || d === NULL_LONG;
+    if (dims.length === 2 && isNull(dims[1]) && !isNull(dims[0])) {
+      // n 0N # x : split into n pieces
+      const n = Math.max(1, dims[0]);
+      const per = Math.ceil(flat.length / n);
+      const out: QValue[] = [];
+      for (let i = 0; i < flat.length; i += per) out.push(fromItems(flat.slice(i, i + per)));
+      while (out.length < n) out.push(fromItems([]));
+      return listFrom(out);
+    }
+    if (dims.some(isNull)) {
+      // 0N n # x : pieces of length n
+      const known = dims.filter((d) => !isNull(d));
       const per = known.length ? known[known.length - 1] : 1;
       const out: QValue[] = [];
       for (let i = 0; i < flat.length; i += per) out.push(fromItems(flat.slice(i, i + per)));
@@ -739,6 +749,10 @@ export function installBuiltins(ip: Interp) {
   def('get', [1], (ip2, [x]) => valueOf(ip2, x));
 
   function valueOf(ip2: Interp, x: QValue): QValue {
+    if (x.t === 0 && count(x) > 1 && isFunc(at(x, 0))) {
+      const its = items(x);
+      return ip2.apply(its[0], its.slice(1));
+    }
     if (isDict(x)) return (x as QDict).v;
     if (isTable(x)) return flip(x);
     if (x.t === -11) return ip2.resolve(A(x), { locals: null });
@@ -762,9 +776,10 @@ export function installBuiltins(ip: Interp) {
       if (d.k.t === 11 && (d.v.t === 0 || (d.v.t > 0 && d.v.t <= 19))) {
         const cols = symsOf(d.k);
         const vals = items(d.v);
-        if (vals.every((v) => !isAtom(v))) {
-          const n = count(vals[0]);
-          if (vals.every((v) => count(v) === n)) return table(cols, vals);
+        const lens = vals.filter((v) => !isAtom(v)).map((v) => count(v));
+        if (lens.length && lens.every((l) => l === lens[0])) {
+          const n = lens[0];
+          return table(cols, vals.map((v) => (isAtom(v) ? fillVec(v, n) : v)));
         }
       }
       return x;
@@ -1343,6 +1358,21 @@ export function installBuiltins(ip: Interp) {
   }
 
   function mmu(ip2: Interp, x: QValue, y: QValue): QValue {
+    // vector arguments are treated as a single row / column
+    const yIsVec = count(y) > 0 && isAtom(at(y, 0));
+    const xIsVec = count(x) > 0 && isAtom(at(x, 0));
+    if (xIsVec && !yIsVec) return at(mmu(ip2, listFrom([x]), y), 0);
+    if (yIsVec) {
+      const rows = xIsVec ? [x] : items(x);
+      const yv = nums(y);
+      const out = rows.map((r) => {
+        const rv = nums(r);
+        let s2 = 0;
+        for (let i = 0; i < Math.min(rv.length, yv.length); i++) s2 += rv[i] * yv[i];
+        return s2;
+      });
+      return xIsVec ? float(out[0]) : floatvec(out);
+    }
     const xr = count(x);
     const out: QValue[] = [];
     for (let i = 0; i < xr; i++) {
@@ -1860,22 +1890,28 @@ export function installBuiltins(ip: Interp) {
   // ---------------------------------------------------------------- sets
 
   def('in', [2], (ip2, [x, y]) => {
+    // y is an atom or simple vector -> left-atomic; y is a general list ->
+    // a single boolean saying whether x itself is an item of y
+    const yIsList = y.t === 0 && count(y) > 0 && at(y, 0).t >= 0;
+    if (yIsList) {
+      const n = count(y);
+      for (let i = 0; i < n; i++) if (matchValues(at(y, i), x)) return bool(true);
+      return bool(false);
+    }
     const has = (e: QValue): boolean => {
+      if (isAtom(y)) return matchValues(y, e);
       const n = count(y);
       for (let i = 0; i < n; i++) if (matchValues(at(y, i), e)) return true;
       return false;
     };
-    if (isAtom(x) || (x.t === 10 && Math.abs(y.t) !== 10)) return bool(has(x));
-    if (isAtom(y)) {
-      const n = count(x);
-      const out = new Array(n);
-      for (let i = 0; i < n; i++) out[i] = matchValues(at(x, i), y) ? 1 : 0;
-      return vec(1, out);
-    }
-    const n = count(x);
-    const out = new Array(n);
-    for (let i = 0; i < n; i++) out[i] = has(at(x, i)) ? 1 : 0;
-    return vec(1, out);
+    const walk = (v: QValue): QValue => {
+      if (isAtom(v)) return bool(has(v));
+      const n = count(v);
+      const out: QValue[] = new Array(n);
+      for (let i = 0; i < n; i++) out[i] = walk(at(v, i));
+      return fromItems(out);
+    };
+    return walk(x);
   });
 
   def('within', [2], (ip2, [x, y]) => {
@@ -2289,11 +2325,23 @@ export function installBuiltins(ip: Interp) {
   def('insert', [2], (ip2, [x, y]) => {
     const name = A(x) as string;
     const cur = ip2.globals.get(name);
-    if (!cur || !isTable(cur)) throw new QError('type');
-    const row = isDict(y) ? tableFromRow(y as QDict) : isTable(y) ? (y as QTable) : rowFromList(cur as QTable, y);
-    const merged = join(ip2, cur, row);
-    ip2.globals.set(name, merged);
-    return long(count(cur));
+    if (!cur || !(isTable(cur) || isKeyedTable(cur))) throw new QError('type');
+    const flat = isKeyedTable(cur) ? unkey(cur as QDict) : (cur as QTable);
+    const row = isDict(y) && !isTable(y)
+      ? tableFromRow(y as QDict)
+      : isTable(y)
+      ? (y as QTable)
+      : rowFromList(flat, y);
+    const merged = join(ip2, flat, row);
+    const before = count(cur);
+    const after = count(merged);
+    const res = isKeyedTable(cur)
+      ? xkey(ip2, symvec(((cur as QDict).k as QTable).c), merged)
+      : merged;
+    ip2.globals.set(name, res);
+    const idx: number[] = [];
+    for (let i = before; i < after; i++) idx.push(i);
+    return idx.length === 1 ? long(idx[0]) : longvec(idx);
   });
 
   function rowFromList(t: QTable, y: QValue): QTable {

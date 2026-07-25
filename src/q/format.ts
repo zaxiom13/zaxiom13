@@ -240,6 +240,7 @@ export function compact(x: QValue, opts: FmtOpts = DEFAULT_OPTS, bare = false): 
   if (x.t === 10) return bare ? (x as QVector).v : '"' + escapeStr((x as QVector).v as string) + '"';
   if (x.t === 0) {
     if (n === 0) return '()';
+    if (n === 1) return ',' + compact((x as QVector).v[0], opts, bare);
     return '(' + (x as QVector).v.map((e: QValue) => compact(e, opts, bare)).join(';') + ')';
   }
   if (n === 0) return '`' + (TYPE_CHAR[x.t] === 'j' ? 'long' : typeNameOf(x.t)) + '$()';

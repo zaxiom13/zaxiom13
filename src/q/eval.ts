@@ -400,6 +400,7 @@ export class Interp {
       case 111:
         return this.applyIter(fn as QIter, args);
       default:
+        if (fn.t === -101) return args.length === 1 ? args[0] : fromItems(args);
         if (fn.t === -11) {
           // a symbol names a function: `f[1;2]
           const target = this.resolve((fn as QAtom).v, { locals: null });
