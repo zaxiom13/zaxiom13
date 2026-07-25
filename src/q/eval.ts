@@ -62,6 +62,8 @@ export type BuiltinFn = (ip: Interp, args: QValue[]) => QValue;
 export interface Builtin {
   name: string;
   ranks: number[];
+  /** variadic keywords like enlist are only ever applied prefix */
+  noInfix?: boolean;
   f: BuiltinFn;
   doc?: string;
   sig?: string;
@@ -70,7 +72,7 @@ export interface Builtin {
 
 export function prim(b: Builtin): QPrim {
   return {
-    t: b.ranks.length === 1 && b.ranks[0] === 1 ? 101 : 102,
+    t: b.noInfix || (b.ranks.length === 1 && b.ranks[0] === 1) ? 101 : 102,
     name: b.name,
     rank: b.ranks,
     f: b.f as any,
@@ -327,6 +329,8 @@ export class Interp {
         // elided index means "all"
         return this.index(fn, args.map((a) => (a === null ? UNIT : a)));
       }
+      if (args.length > this.rankOf(fn) && fn.t === 100)
+        throw new QError('rank', `too many arguments for ${(fn as QLambda).src}`);
       return { t: 104, f: fn, args } as QProj;
     }
     return this.apply(fn, args as QValue[]);
@@ -519,8 +523,8 @@ export class Interp {
     const out: QValue[] = [];
     for (let i = 0; i < n; i++) {
       const cur = at(x, i);
-      const prev = i === 0 ? seed : at(x, i - 1);
-      // with no seed the first result is the first item itself (deltas 1 3 6 -> 1 2 3)
+      let prev = i === 0 ? seed : at(x, i - 1);
+      if (prev === null) prev = zeroLike(cur);
       out.push(prev === null ? cur : this.apply(f, [cur, prev]));
     }
     if (n === 0) return isAtom(x) ? x : fromItems([]);
@@ -1271,6 +1275,14 @@ export function fillVec(a: QValue, n: number): QValue {
   const out: QValue[] = [];
   for (let i = 0; i < n; i++) out.push(a);
   return fromItems(out);
+}
+
+/** the additive zero of an atom's type (the implicit seed for each-prior) */
+export function zeroLike(x: QValue): QValue | null {
+  const t = Math.abs(x.t);
+  if (t === 1 || t === 4 || (t >= 5 && t <= 9)) return atom(-t, 0);
+  if (t >= 12 && t <= 19) return atom(-t, t === 12 || t === 16 ? 0n : 0);
+  return null;
 }
 
 export function nullLike(x: QValue): QValue {

@@ -345,9 +345,11 @@ interface NumRes {
 const DAYS_PER_MONTH = [31, 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31];
 
 export function daysFromEpoch(y: number, m: number, d: number): number {
-  // days since 2000.01.01
-  const days = Date.UTC(y, m - 1, d) / 86400000;
-  return Math.round(days - 10957);
+  // days since 2000.01.01 (Date.UTC maps years 0-99 into the 1900s)
+  const dt = new Date(0);
+  dt.setUTCFullYear(y, m - 1, d);
+  dt.setUTCHours(0, 0, 0, 0);
+  return Math.round(dt.getTime() / 86400000 - 10957);
 }
 
 export function ymdFromDays(days: number): [number, number, number] {
@@ -372,9 +374,9 @@ function scanNumber(src: string, i: number): NumRes | null {
       k++;
     }
     if (hex.length === 0) return null;
+    if (hex.length <= 2) return { e: k, t: -4, v: parseInt(hex, 16) };
     const bytes: number[] = [];
     for (let p = 0; p + 1 < hex.length; p += 2) bytes.push(parseInt(hex.slice(p, p + 2), 16));
-    if (hex.length === 2) return { e: k, t: -4, v: bytes[0] };
     return { e: k, t: 4, v: bytes };
   }
 

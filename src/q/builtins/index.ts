@@ -193,11 +193,13 @@ export function installBuiltins(ip: Interp) {
     keepNulls: true,
   };
 
-  const cmp3 = (a: number, b: number) => (floatEq(a, b) ? 0 : a < b ? -1 : 1);
+  const cmp3 = (a: number, b: number, ta = 9, tb = 9) =>
+    floatEq(a, b, ta, tb) ? 0 : a < b ? -1 : 1;
 
   const eqSpec = {
     name: '=',
-    num: (a: number, b: number) => (floatEq(a, b) ? 1 : 0),
+    num: (a: number, b: number) => (a === b ? 1 : 0),
+    numT: (a: number, b: number, ta: number, tb: number) => (floatEq(a, b, ta, tb) ? 1 : 0),
     rtype: () => 1,
     keepNulls: true,
     big: (a: bigint, b: bigint) => (a === b ? 1n : 0n),
@@ -212,6 +214,7 @@ export function installBuiltins(ip: Interp) {
     const spec = {
       name: 'cmp',
       num: (a: number, b: number) => (test(cmp3(a, b)) ? 1 : 0),
+      numT: (a: number, b: number, ta: number, tb: number) => (test(cmp3(a, b, ta, tb)) ? 1 : 0),
       rtype: () => 1,
       keepNulls: true,
       big: (a: bigint, b: bigint) => (test(a < b ? -1 : a > b ? 1 : 0) ? 1n : 0n),
@@ -326,10 +329,8 @@ export function installBuiltins(ip: Interp) {
     atomic2(ip2, x, y, {
       name: 'div',
       num: (a, b) => Math.floor(a / b),
-      rtype: (a, b) => {
-        const t = arithType(a, b);
-        return t;
-      },
+      // q returns the left type, widened to at least int
+      rtype: (a: number) => (a === 9 || a === 8 ? a : a <= 6 || a === 10 ? 6 : a),
     } as any)
   );
   def('mod', [2], (ip2, [x, y]) =>
@@ -410,9 +411,13 @@ export function installBuiltins(ip: Interp) {
   // ---------------------------------------------------------------- structure
 
   def(',', [1, 2], (ip2, a) => (a.length === 1 ? enlist(a[0]) : join(ip2, a[0], a[1])));
-  def('enlist', [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16], (ip2, a) =>
-    a.length === 1 ? enlist(a[0]) : fromItems(a)
-  );
+  ip.def({
+    name: 'enlist',
+    ranks: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16],
+    // variadic, so q applies it prefix only
+    noInfix: true,
+    f: (ip2, a) => (a.length === 1 ? enlist(a[0]) : fromItems(a)),
+  });
 
   function join(ip2: Interp, x: QValue, y: QValue): QValue {
     if (isTable(x) && isTable(y)) {
@@ -562,6 +567,36 @@ export function installBuiltins(ip: Interp) {
   def('cut', [2], (ip2, [x, y]) => cutOp(ip2, x, y));
 
   function dropOp(ip2: Interp, x: QValue, y: QValue): QValue {
+    const intAtom = (v: QValue) =>
+      isAtom(v) && (Math.abs(v.t) === 7 || Math.abs(v.t) === 6 || Math.abs(v.t) === 5);
+    // x _ i : delete the item at index i
+    if (!isAtom(x) && intAtom(y)) {
+      const i = Math.trunc(N(y));
+      const len = count(x);
+      const idx: number[] = [];
+      for (let j = 0; j < len; j++) if (j !== i) idx.push(j);
+      if (isTable(x)) return selectTableRows(x as QTable, idx);
+      if (isDict(x)) {
+        const d = x as QDict;
+        return dict(selectRows(d.k, idx), selectRows(d.v, idx));
+      }
+      return selectRows(x, idx);
+    }
+    // d _ `key : drop entries
+    if ((isDict(x) || isTable(x)) && (y.t === -11 || y.t === 11)) {
+      const drop = symsOf(y);
+      if (isTable(x)) {
+        const t = x as QTable;
+        const keep = t.c.map((c, i) => i).filter((i) => !drop.includes(t.c[i]));
+        return table(keep.map((i) => t.c[i]), keep.map((i) => t.v[i]));
+      }
+      const d = x as QDict;
+      const keep: number[] = [];
+      items(d.k).forEach((k, i) => {
+        if (!(k.t === -11 && drop.includes(A(k)))) keep.push(i);
+      });
+      return dict(selectRows(d.k, keep), selectRows(d.v, keep));
+    }
     if (isAtom(x) && (Math.abs(x.t) === 7 || Math.abs(x.t) === 6 || Math.abs(x.t) === 5)) {
       const n = Math.trunc(N(x));
       const len = count(y);
@@ -655,6 +690,13 @@ export function installBuiltins(ip: Interp) {
     if (isAtom(x) && Math.abs(x.t) === 7 && isNullAt(x.t, A(x))) {
       // 0N!x  - display and return
       ip2.out(display(y));
+      return y;
+    }
+    if (isAtom(x) && Math.abs(x.t) === 7 && y.t === -11) {
+      const nm = A(y) as string;
+      const cur = ip2.resolve(nm, { locals: null });
+      const res = ip2.apply(prim(ip2.builtins.get('!')!), [x, cur]);
+      ip2.globals.set(nm, res);
       return y;
     }
     if (isAtom(x) && (Math.abs(x.t) === 7 || Math.abs(x.t) === 6) && isTable(y)) {
@@ -959,7 +1001,8 @@ export function installBuiltins(ip: Interp) {
   def('type', [1], (ip2, [x]) => atom(-5, x.t === -101 ? 101 : x.t));
 
   def('.', [2, 3, 4], (ip2, a) => {
-    const [x, y] = a;
+    let [x, y] = a;
+    if (x.t === -11 && ip2.globals.has(A(x) as string)) x = ip2.globals.get(A(x) as string)!;
     if (a.length === 2) {
       if (isFunc(x)) {
         const args = isAtom(y) ? [y] : items(y);
@@ -1069,6 +1112,8 @@ export function installBuiltins(ip: Interp) {
   function castValue(ip2: Interp, x: QValue, y: QValue): QValue {
     if (!isAtom(x)) {
       const specs = items(x);
+      if (!isAtom(y) && count(y) === specs.length)
+        return fromItems(specs.map((s2, i) => castValue(ip2, s2, at(y, i))));
       return fromItems(specs.map((s2) => castValue(ip2, s2, y)));
     }
     if (Math.abs(x.t) === 5 || Math.abs(x.t) === 6 || Math.abs(x.t) === 7) {
@@ -1168,8 +1213,12 @@ export function installBuiltins(ip: Interp) {
         return [4, Math.trunc(n) & 255];
       case 5:
       case 6:
-      case 7:
-        return [t, Math.trunc(convertTemporal(f, t, n))];
+      case 7: {
+        const v2 = convertTemporal(f, t, n);
+        // q rounds when narrowing a float, and rounds halves away from zero
+        const r = f === 9 || f === 8 ? (v2 < 0 ? -Math.round(-v2) : Math.round(v2)) : Math.trunc(v2);
+        return [t, r];
+      }
       case 8:
       case 9:
         return [t, convertTemporal(f, t, n)];
@@ -1654,7 +1703,11 @@ export function installBuiltins(ip: Interp) {
 
   const moving = (name: string, f: (win: number[]) => number, floatOut: boolean) =>
     def(name, [2], (ip2, [x, y]) => {
-      if (isDict(y)) return dict((y as QDict).k, ip2.apply(prim(ip2.builtins.get(name)!), [x, (y as QDict).v]));
+      if (isDict(y)) {
+        const d = y as QDict;
+        const f2 = prim(ip2.builtins.get(name)!);
+        return dict(d.k, fromItems(items(d.v).map((v) => ip2.apply(f2, [x, v]))));
+      }
       if (isTable(y)) {
         const t = y as QTable;
         return table(t.c.slice(), t.v.map((c) => ip2.apply(prim(ip2.builtins.get(name)!), [x, c])));
@@ -2026,27 +2079,62 @@ export function installBuiltins(ip: Interp) {
   });
 
   def('sv', [2], (ip2, [x, y]) => {
-    // string join / base decode
+    // ` sv `a`b -> `a.b ;  ` sv strings -> newline-joined
     if (x.t === -11 && A(x) === '') {
-      return str(items(y).map((e) => qToString(e)).join('\n'));
+      if (y.t === 11 || y.t === -11) return sym(symsOf(y).join('.'));
+      return str(items(y).map((e) => (e.t === 10 ? ((e as QVector).v as string) : qToString(e))).join('\n'));
     }
     if (x.t === 10 || x.t === -10) {
       const sep = x.t === 10 ? ((x as QVector).v as string) : A(x);
       const parts = items(y).map((e) => (e.t === 10 ? ((e as QVector).v as string) : qToString(e)));
       return str(parts.join(sep));
     }
-    if (isAtom(x) && Math.abs(x.t) === 7) {
+    // base decode
+    const digits = (): number[] => {
+      if (y.t === 0) return items(y).map((e) => numOf(raw(e, 0) ?? A(e)));
+      return nums(y);
+    };
+    if (Math.abs(x.t) === 4) {
+      // bytes: the result width follows the number of digits
+      const ds = y.t === 0 ? items(y).map((e) => nums(e)) : [nums(y)];
+      const dec = (arr: number[]) => arr.reduce((a, b) => a * 256 + b, 0);
+      if (y.t === 0) return fromItems(ds.map((arr) => atom(-4, dec(arr) & 255)));
+      const arr = nums(y);
+      const v = arr.reduce((a, b) => a * 256 + b, 0);
+      const n = arr.length;
+      if (isAtom(x) && A(x) === 0) {
+        if (n <= 1) return atom(-4, v & 255);
+        if (n === 2) return atom(-5, (v << 16) >> 16);
+        if (n <= 4) return atom(-6, v | 0);
+        return long(v);
+      }
+      return long(v);
+    }
+    if (Math.abs(x.t) === 1) {
+      const arr = nums(y);
+      let v = 0;
+      for (const b of arr) v = v * 2 + b;
+      if (arr.length === 64) {
+        // two's complement 64-bit
+        let big = 0n;
+        for (const b of arr) big = big * 2n + BigInt(b);
+        if (big >= 1n << 63n) big -= 1n << 64n;
+        return long(Number(big));
+      }
+      return long(v);
+    }
+    if (isAtom(x) && (Math.abs(x.t) === 7 || Math.abs(x.t) === 6 || Math.abs(x.t) === 5)) {
       const base = N(x);
+      const arr = digits();
       let acc = 0;
-      const n = count(y);
-      for (let i = 0; i < n; i++) acc = acc * base + numOf(raw(y, i));
+      for (const d of arr) acc = acc * base + d;
       return long(acc);
     }
-    if (x.t === 7 || x.t === 6) {
+    if (x.t === 7 || x.t === 6 || x.t === 5) {
       const bases = nums(x);
+      const arr = digits();
       let acc = 0;
-      const n = count(y);
-      for (let i = 0; i < n; i++) acc = acc * (bases[i] || 1) + numOf(raw(y, i));
+      for (let i = 0; i < arr.length; i++) acc = acc * (bases[i] ?? 1) + arr[i];
       return long(acc);
     }
     throw new QError('type');
@@ -2055,12 +2143,44 @@ export function installBuiltins(ip: Interp) {
   def('vs', [2], (ip2, [x, y]) => {
     if (x.t === 10 || x.t === -10) {
       const sep = x.t === 10 ? ((x as QVector).v as string) : A(x);
-      const s = y.t === 10 ? ((y as QVector).v as string) : qToString(y);
-      return listFrom(s.split(sep).map((p) => str(p)));
+      const s2 = y.t === 10 ? ((y as QVector).v as string) : qToString(y);
+      return listFrom(s2.split(sep).map((p2) => str(p2)));
     }
     if (x.t === -11 && A(x) === '') {
-      const s = y.t === 10 ? ((y as QVector).v as string) : qToString(y);
-      return listFrom(s.split('\n').map((p) => str(p)));
+      if (y.t === -11) return symvec(String(A(y)).split('.'));
+      const s2 = y.t === 10 ? ((y as QVector).v as string) : qToString(y);
+      return listFrom(s2.split('\n').map((p2) => str(p2)));
+    }
+    if (Math.abs(x.t) === 4) {
+      // encode into bytes, width from the value's type
+      const one = (v: number, t: number): number[] => {
+        const width = t === 5 ? 2 : t === 6 || t === 14 || t === 19 ? 4 : t === 4 ? 1 : 8;
+        const out: number[] = new Array(width);
+        let bi = BigInt(Math.trunc(v));
+        if (bi < 0n) bi += 1n << BigInt(8 * width);
+        for (let i = width - 1; i >= 0; i--) {
+          out[i] = Number(bi & 255n);
+          bi >>= 8n;
+        }
+        return out;
+      };
+      if (isAtom(y)) return typedVec(4, one(N(y), Math.abs(y.t)));
+      return listFrom(items(y).map((e) => typedVec(4, one(N(e), Math.abs(e.t)))));
+    }
+    if (Math.abs(x.t) === 1) {
+      const one = (v: number, t: number): number[] => {
+        const width = t === 5 ? 16 : t === 6 ? 32 : t === 4 ? 8 : 64;
+        const out: number[] = new Array(width);
+        let bi = BigInt(Math.trunc(v));
+        if (bi < 0n) bi += 1n << BigInt(width);
+        for (let i = width - 1; i >= 0; i--) {
+          out[i] = Number(bi & 1n);
+          bi >>= 1n;
+        }
+        return out;
+      };
+      if (isAtom(y)) return typedVec(1, one(N(y), Math.abs(y.t)));
+      return listFrom(items(y).map((e) => typedVec(1, one(N(e), Math.abs(e.t)))));
     }
     if (isAtom(x) && (Math.abs(x.t) === 7 || Math.abs(x.t) === 6)) {
       const base = N(x);
@@ -2077,7 +2197,6 @@ export function installBuiltins(ip: Interp) {
       return listFrom(items(y).map((e) => longvec(enc(N(e)))));
     }
     if (x.t === 7 || x.t === 6 || x.t === 5) {
-      // fixed-width encode: (8#2) vs n
       const bases = nums(x);
       const enc = (n0: number): number[] => {
         let v = Math.trunc(n0);
@@ -2095,8 +2214,7 @@ export function installBuiltins(ip: Interp) {
         return out;
       };
       if (isAtom(y)) return longvec(enc(N(y)));
-      const rows = items(y).map((e) => enc(N(e)));
-      return listFrom(rows.map((r) => longvec(r)));
+      return listFrom(items(y).map((e) => longvec(enc(N(e)))));
     }
     throw new QError('type');
   });

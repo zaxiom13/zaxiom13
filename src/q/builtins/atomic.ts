@@ -70,6 +70,8 @@ export interface AtomicSpec {
   name: string;
   /** raw scalar computation on numbers */
   num: (a: number, b: number) => number;
+  /** variant that also sees the operand types (comparisons need them) */
+  numT?: (a: number, b: number, ta: number, tb: number) => number;
   /** result type; default arithType */
   rtype?: (ta: number, tb: number) => number;
   /** bigint variant for timestamp/timespan */
@@ -97,7 +99,7 @@ export function atomicScalar(spec: AtomicSpec, ta: number, tb: number, a: any, b
   const na = numOf(a),
     nb = numOf(b);
   if (!spec.keepNulls && (isIntNull(A, a) || isIntNull(B, b))) return [rt, nullValue(rt)];
-  let r = spec.num(na, nb);
+  let r = spec.numT ? spec.numT(na, nb, A, B) : spec.num(na, nb);
   if (rt === 10) return [10, String.fromCharCode(Math.trunc(r))];
   if (rt !== 9 && rt !== 8 && rt !== 15) {
     if (!Number.isFinite(r)) r = nullValue(rt);
@@ -264,12 +266,20 @@ export function cmpKey(t: number, v: any): number | string {
   return v as number;
 }
 
-export const FLOAT_TOLERANCE = 1e-14;
+/** q's comparison tolerance is exactly 2^-43 */
+export const FLOAT_TOLERANCE = Math.pow(2, -43);
 
-/** q compares floats with a relative tolerance of about 1e-14 */
-export function floatEq(a: number, b: number): boolean {
+const isFloatType = (t: number) => t === 8 || t === 9 || t === 15;
+
+/**
+ * Tolerant equality, but only when one side is a float/real/datetime, and
+ * never for zero - exactly as documented in basics/precision.
+ */
+export function floatEq(a: number, b: number, ta = 9, tb = 9): boolean {
   if (a === b) return true;
   if (Number.isNaN(a) || Number.isNaN(b)) return false;
+  if (!isFloatType(ta) && !isFloatType(tb)) return false;
+  if (a === 0 || b === 0) return false;
   const m = Math.max(Math.abs(a), Math.abs(b));
   return Math.abs(a - b) <= FLOAT_TOLERANCE * m;
 }
