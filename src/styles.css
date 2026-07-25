@@ -226,8 +226,8 @@ kbd {
 }
 .canvas-host canvas {
   display: block;
-  width: 100% !important;
-  height: 100% !important;
+  max-width: 100%;
+  max-height: 100%;
   touch-action: none;
 }
 .canvas-badges {
@@ -709,4 +709,31 @@ table.grid tr:hover td {
 }
 .toast.show {
   opacity: 1;
+}
+
+@media (max-width: 900px) {
+  .topbar {
+    gap: 6px;
+    padding: 0 8px;
+  }
+  .brand {
+    font-size: 14px;
+  }
+  #examples {
+    max-width: 108px;
+    text-overflow: ellipsis;
+  }
+  .topbar button {
+    padding: 6px 8px;
+  }
+}
+@media (max-width: 360px) {
+  .brand {
+    font-size: 0;
+    gap: 0;
+  }
+  .brand b,
+  .brand span {
+    font-size: 16px;
+  }
 }

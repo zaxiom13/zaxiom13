@@ -18,13 +18,15 @@ export const EXAMPLES: Example[] = [
 / Ctrl+Enter (or the Run button) draws it.
 bg \`#0e1116
 
+/ four shapes, spread across whatever canvas you have
+u:.p5.w%5
 scene:([]
   shape:\`circle\`circle\`circle\`rect\`text;
-  x:120 220 320 420 260;
-  y:160 160 160 160 260;
-  r:40 40 40 30 0;
-  w:0 0 0 90 0;
-  h:0 0 0 60 0;
+  x:u*1 2 3 4 2.5;
+  y:.p5.cy*0.85 0.85 0.85 0.85 1.6;
+  r:0.28*u;
+  w:0 0 0 (0.55*u) 0;
+  h:0 0 0 (0.4*u) 0;
   fill:\`#ff6b6b\`#ffd93d\`#6bcb77\`#4d96ff\`white;
   txt:("";"";"";"";"tables are pictures"))
 
@@ -102,11 +104,11 @@ path,dots`,
     code: `/ Synthetic tick data, bucketed into candles - real kdb+ muscle memory.
 bg \`#0a0d13
 n:2000
-trade:([] time:09:00:00.000+250*til n; px:100+sums (n?0.4)-0.2)
+trade:([] time:09:00:00.000+1000*til n; px:100+sums (n?0.4)-0.2)
 
-/ one candle per 5 minutes
+/ one candle per minute
 c:select o:first px, h:max px, l:min px, c:last px
-  by bar:00:05 xbar time from trade
+  by bar:00:01 xbar time.minute from trade
 c:0!c
 c:update i:til count c from c
 

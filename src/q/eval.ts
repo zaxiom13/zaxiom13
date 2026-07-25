@@ -1047,8 +1047,8 @@ export class Interp {
         const newCols = new Map<string, QValue[]>();
         const assigns: { name: string; vals: (QValue | null)[] }[] = [];
         const result = table(tbl.c.slice(), tbl.v.map((c) => shallowClone(c)));
-        for (const spec of n.cols) {
-          const nm = spec.name ?? deriveName(spec.e, 0);
+        for (const [si, spec] of n.cols.entries()) {
+          const nm = spec.name ?? deriveName(spec.e, si);
           let col = result.c.indexOf(nm) >= 0 ? shallowClone(result.v[result.c.indexOf(nm)]) : null;
           const values: (QValue | null)[] = new Array(nrows).fill(null);
           for (const g of groups) {
@@ -1073,8 +1073,8 @@ export class Interp {
       }
       const scope = this.tableFrame(filtered, f, rows);
       const result = table(tbl.c.slice(), tbl.v.map((c) => shallowClone(c)));
-      for (const spec of n.cols) {
-        const nm = spec.name ?? deriveName(spec.e, 0);
+      for (const [si, spec] of n.cols.entries()) {
+        const nm = spec.name ?? deriveName(spec.e, si);
         const v = this.evalNode(spec.e, this.tableFrame(subTable(result, rows), f, rows));
         const ci = result.c.indexOf(nm);
         if (rows.length === nrows) {

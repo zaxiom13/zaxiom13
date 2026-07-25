@@ -413,13 +413,17 @@ class Parser {
   }
 
   colSpec(ctx: Ctx): ColSpec {
-    // name:expr | expr
+    // name:expr | expr   (a newline before the spec is a continuation)
+    this.skipNl();
     if (this.at('name') && this.peek(1).k === 'op' && this.peek(1).s === ':') {
       const nm = this.next().s;
       this.next();
       return { name: nm, e: this.expr(ctx) };
     }
     const e = this.expr(ctx);
+    // "c:expr" parsed as an assignment is still a column spec
+    if (e.k === 'assign' && e.idx === null && !e.op && !e.global)
+      return { name: e.name, e: e.v };
     return { name: null, e };
   }
 

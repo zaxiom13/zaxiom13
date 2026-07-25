@@ -1,6 +1,6 @@
 // The bridge between the q interpreter and p5.js.
 
-import p5 from 'p5';
+import type p5 from 'p5';
 import { Interp } from '../q/eval';
 import {
   QValue,
@@ -47,6 +47,8 @@ export interface RuntimeEvents {
 
 export class SketchRuntime {
   p: p5 | null = null;
+  private P5: any = null;
+  private loading: Promise<void> | null = null;
   ip: Interp;
   container: HTMLElement;
   events: RuntimeEvents;
@@ -62,21 +64,54 @@ export class SketchRuntime {
   bgColor = '#0e1116';
   private pendingStatic: QValue | null = null;
   private errorShown = false;
+  /** p5 creates the canvas asynchronously; nothing may paint before that */
+  private canvasReady = false;
 
-  constructor(ip: Interp, container: HTMLElement, events: RuntimeEvents = {}) {
+  /** headless runtimes (lesson sessions, tests) never touch the canvas */
+  headless: boolean;
+
+  constructor(ip: Interp, container: HTMLElement | null, events: RuntimeEvents = {}) {
     this.ip = ip;
-    this.container = container;
+    this.container = container as HTMLElement;
     this.events = events;
+    this.headless = !container;
+    this.install();
+  }
+
+  /** point the runtime at a fresh interpreter (one canvas, many programs) */
+  attach(ip: Interp) {
+    this.ip = ip;
     this.install();
   }
 
   // ------------------------------------------------------------------ p5
 
+  /** p5 is ~900kB, so it is fetched in parallel with the first run. */
+  ready(): Promise<void> {
+    if (typeof document === 'undefined' || this.headless) return Promise.resolve();
+    if (!this.loading)
+      this.loading = import('p5').then((m) => {
+        this.P5 = (m as any).default ?? m;
+      });
+    return this.loading;
+  }
+
   mount() {
-    if (this.p) return;
+    if (this.p || this.headless) return;
     if (typeof document === 'undefined') return; // headless (tests)
+    if (!this.P5) {
+      void this.ready().then(() => {
+        this.mount();
+        if (this.mode === 'static' || this.mode === 'idle') this.redrawStatic();
+        else {
+          this.running = true;
+          this.p?.loop();
+        }
+      });
+      return;
+    }
     const self = this;
-    this.p = new p5((p: p5) => {
+    this.p = new this.P5((p: p5) => {
       p.setup = () => {
         const { w, h } = self.size();
         const c = p.createCanvas(w, h);
@@ -86,6 +121,10 @@ export class SketchRuntime {
         p.pixelDensity(Math.min(window.devicePixelRatio || 1, 2));
         p.background(self.bgColor);
         p.noLoop();
+        self.canvasReady = true;
+        self.resize();
+        if (self.running && !self.paused) p.loop();
+        else self.redrawStatic();
       };
       p.draw = () => self.tick();
       p.windowResized = () => {
@@ -102,8 +141,9 @@ export class SketchRuntime {
   }
 
   resize() {
-    if (!this.p) return;
+    if (!this.p || !this.canvasReady) return;
     const { w, h } = this.size();
+    if (w === this.p.width && h === this.p.height) return;
     this.p.resizeCanvas(w, h);
     if (!this.running) this.redrawStatic();
   }
@@ -115,9 +155,15 @@ export class SketchRuntime {
     this.mount();
     const g = this.ip.globals;
     this.errorShown = false;
-    const hasFrame = isFunc(g.get('frame') ?? UNIT);
-    const hasStep = isFunc(g.get('step') ?? UNIT);
-    const hasDraw = isFunc(g.get('draw') ?? UNIT);
+    // only *user-defined* lambdas count, otherwise the builtin `draw` would
+    // look like an imperative sketch
+    const lam = (nm: string) => {
+      const v = g.get(nm);
+      return v && v.t === 100 ? v : null;
+    };
+    const hasFrame = !!lam('frame');
+    const hasStep = !!lam('step');
+    const hasDraw = !!lam('draw');
     if (hasStep) {
       this.mode = 'state';
       const init = g.get('init');
@@ -157,10 +203,24 @@ export class SketchRuntime {
     this.status();
   }
 
+  /** Scene-shaped tables left at the end of a program are drawn automatically. */
+  autoDraw(v: QValue): boolean {
+    if (!isTable(v) && !isDict(v)) return false;
+    const cols = isTable(v) ? (v as QTable).c : ((v as any).k?.v as string[]) ?? [];
+    if (!Array.isArray(cols)) return false;
+    if (!cols.some((c) => ['x', 'y', 'shape', 'pts', 'r'].includes(c))) return false;
+    this.pendingStatic = v;
+    this.mode = 'static';
+    this.mount();
+    this.redrawStatic();
+    return true;
+  }
+
   clear() {
     this.pendingStatic = null;
     this.mode = 'idle';
     this.running = false;
+    this.lastShapes = 0;
     this.state = UNIT;
     if (this.p) {
       this.p.noLoop();
@@ -173,7 +233,7 @@ export class SketchRuntime {
   }
 
   private redrawStatic() {
-    if (!this.p) {
+    if (!this.p || !this.canvasReady) {
       this.status();
       return;
     }
@@ -188,8 +248,8 @@ export class SketchRuntime {
   }
 
   private tick() {
-    const p = this.p!;
-    if (!this.running) return;
+    const p = this.p;
+    if (!p || !this.canvasReady || !this.running) return;
     const now = performance.now();
     const t = (now - this.startTime) / 1000;
     this.frameNo++;
@@ -225,7 +285,8 @@ export class SketchRuntime {
   }
 
   private pushInputs(t: number) {
-    const p = this.p!;
+    const p = this.p;
+    if (!p) return;
     const g = this.ip.globals;
     g.set('.p5.t', float(t));
     g.set('.p5.f', long(this.frameNo));
@@ -298,9 +359,9 @@ export class SketchRuntime {
             defaultStroke: '#e5e7eb',
           });
         }
-        return scene;
+        return UNIT;
       },
-      'Render a scene table on the canvas and return it.',
+      'Render a scene table on the canvas.',
       'draw scene',
       ['draw ([] x:100 200; y:100 100; r:40 25; fill:`gold`crimson)']
     );
@@ -310,11 +371,11 @@ export class SketchRuntime {
       [1],
       (_ip, [c]) => {
         self.bgColor = toColor(c, '#0e1116');
-        if (self.p && !self.running) {
+        if (self.p && self.canvasReady && !self.running) {
           self.p.background(self.bgColor);
           self.redrawStatic();
         }
-        return c;
+        return UNIT;
       },
       'Set the canvas background colour.',
       'bg `midnight',
@@ -611,7 +672,7 @@ export class SketchRuntime {
         const amp = col('amp');
         for (let i = 0; i < f.length; i++)
           self.audio.note(f[i], at0 ? at0[i] : i * 0.25, d ? d[i] : 0.2, amp ? amp[i] : 0.2);
-        return score;
+        return UNIT;
       },
       'Play a score table: columns f (frequency), t (start), d (duration), amp.',
       'play score',

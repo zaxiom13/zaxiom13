@@ -51,7 +51,7 @@ export function runConsole(ip: Interp, src: string, fmt: FmtOpts = DEFAULT_OPTS)
   }
 }
 
-function shouldPrint(node: any, v: QValue): boolean {
+export function shouldPrint(node: any, v: QValue): boolean {
   if (v === undefined) return false;
   if (v.t === -101) return false; // ::
   if (node && node.k === 'assign') return false;
