@@ -520,7 +520,8 @@ export class Interp {
     for (let i = 0; i < n; i++) {
       const cur = at(x, i);
       const prev = i === 0 ? seed : at(x, i - 1);
-      out.push(prev === null ? nullAtomOf(cur.t) : this.apply(f, [cur, prev]));
+      // with no seed the first result is the first item itself (deltas 1 3 6 -> 1 2 3)
+      out.push(prev === null ? cur : this.apply(f, [cur, prev]));
     }
     if (n === 0) return isAtom(x) ? x : fromItems([]);
     return fromItems(out);

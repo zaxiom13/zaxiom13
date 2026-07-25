@@ -89,7 +89,7 @@ export const RESERVED = new Set([
 
 const isDigit = (c: string) => c >= '0' && c <= '9';
 const isAlpha = (c: string) => (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z');
-const isNameStart = (c: string) => isAlpha(c) || c === '_';
+const isNameStart = (c: string) => isAlpha(c); // q names start with a letter
 const isNameChar = (c: string) => isAlpha(c) || isDigit(c) || c === '_';
 
 export function lex(src: string): Tok[] {
