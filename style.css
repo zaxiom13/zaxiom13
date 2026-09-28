@@ -12,11 +12,12 @@
 html { background: #111; }
 body {
   margin: 0;
-  min-height: 100vh;
+  height: 100vh;
+  height: 100dvh;
   display: flex;
   justify-content: center;
-  align-items: flex-start;
-  padding: 16px;
+  padding: 12px;
+  overflow: hidden;
   font-family: "Courier New", Courier, "Liberation Mono", monospace;
   font-size: clamp(14px, 3.6vw, 20px);
   line-height: 1.5;
@@ -25,6 +26,9 @@ body {
 .screen {
   width: 40ch;
   max-width: 100%;
+  height: 100%;
+  display: flex;
+  flex-direction: column;
   background: var(--black);
   padding: 0 1ch 1ch;
   text-transform: uppercase;
@@ -33,6 +37,7 @@ body {
 }
 .row { display: flex; justify-content: space-between; white-space: pre; }
 .head {
+  flex: none;
   background: var(--white);
   color: var(--black);
   margin: 0 -1ch;
@@ -65,13 +70,17 @@ p { margin: 0 0 1em; }
 .dots { flex: 1; overflow: hidden; white-space: nowrap; color: var(--blue); }
 a { color: var(--cyan); text-decoration: none; }
 a:hover, a:focus { background: var(--cyan); color: var(--black); outline: none; }
+.pages { flex: 1; min-height: 0; overflow-y: auto; scrollbar-width: none; }
+.pages::-webkit-scrollbar { display: none; }
 .page { display: none; }
 .page.on { display: block; }
+.no-js html, .no-js body { height: auto; overflow: visible; }
 .no-js .page { display: block; margin-bottom: 2em; }
 .foot {
   display: grid;
   grid-template-columns: repeat(4, 1fr);
-  margin: 1.5em -1ch 0;
+  margin: .5em -1ch 0;
+  flex: none;
   font-weight: bold;
   text-align: center;
 }
