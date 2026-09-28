@@ -1,0 +1,87 @@
+:root {
+  --black: #000;
+  --white: #fff;
+  --yellow: #ff0;
+  --cyan: #0ff;
+  --green: #0f0;
+  --magenta: #f0f;
+  --red: #f00;
+  --blue: #00f;
+}
+* { box-sizing: border-box; }
+html { background: #111; }
+body {
+  margin: 0;
+  min-height: 100vh;
+  display: flex;
+  justify-content: center;
+  align-items: flex-start;
+  padding: 16px;
+  font-family: "Courier New", Courier, "Liberation Mono", monospace;
+  font-size: clamp(14px, 3.6vw, 20px);
+  line-height: 1.5;
+  color: var(--white);
+}
+.screen {
+  width: 40ch;
+  max-width: 100%;
+  background: var(--black);
+  padding: 0 1ch 1ch;
+  text-transform: uppercase;
+  letter-spacing: 0;
+  box-shadow: 0 0 40px rgba(0, 255, 255, .08);
+}
+.row { display: flex; justify-content: space-between; white-space: pre; }
+.head {
+  background: var(--white);
+  color: var(--black);
+  margin: 0 -1ch;
+  padding: 0 1ch;
+  font-weight: bold;
+}
+.head .pg { color: var(--blue); }
+.title {
+  margin: 1em 0 .5em;
+  color: var(--yellow);
+  font-size: 2em;
+  line-height: 1.1;
+  font-weight: bold;
+}
+.bar { margin: .5em -1ch; padding: 0 1ch; font-weight: bold; }
+.bar.blue { background: var(--blue); color: var(--white); }
+.bar.green { background: var(--green); color: var(--black); }
+.bar.magenta { background: var(--magenta); color: var(--black); }
+.bar.cyan { background: var(--cyan); color: var(--black); }
+h2 { margin: 0; font-size: 1em; }
+p { margin: 0 0 1em; }
+.y { color: var(--yellow); }
+.c { color: var(--cyan); }
+.g { color: var(--green); }
+.m { color: var(--magenta); }
+.w { color: var(--white); }
+.item { display: flex; gap: 1ch; }
+.item .n { color: var(--yellow); flex: none; }
+.item .t { flex: 1; }
+.dots { flex: 1; overflow: hidden; white-space: nowrap; color: var(--blue); }
+a { color: var(--cyan); text-decoration: none; }
+a:hover, a:focus { background: var(--cyan); color: var(--black); outline: none; }
+.page { display: none; }
+.page.on { display: block; }
+.no-js .page { display: block; margin-bottom: 2em; }
+.foot {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  margin: 1.5em -1ch 0;
+  font-weight: bold;
+  text-align: center;
+}
+.foot a { padding: .1em 0; }
+.foot .r { background: var(--red); color: var(--white); }
+.foot .g { background: var(--green); color: var(--black); }
+.foot .y { background: var(--yellow); color: var(--black); }
+.foot .c { background: var(--cyan); color: var(--black); }
+.foot a:hover, .foot a:focus { filter: invert(1); }
+.hint { margin-top: .75em; color: var(--white); }
+.blink { animation: blink 1.1s steps(1) infinite; }
+@keyframes blink { 50% { opacity: 0; } }
+@media (prefers-reduced-motion: reduce) { .blink { animation: none; } }

@@ -1,9 +1,0 @@
-# Cloudflare Pages headers, copied into dist by `npm run build:site`.
-# Hashed filenames never change contents, so they can be cached forever...
-/assets/*
-  Cache-Control: public, max-age=31536000, immutable
-# ...but the page that names them must always be revalidated.
-/index.html
-  Cache-Control: public, max-age=0, must-revalidate
-/
-  Cache-Control: public, max-age=0, must-revalidate
